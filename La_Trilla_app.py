@@ -1,24 +1,24 @@
 import streamlit as st
 from pathlib import Path
-import gspread
-from google.oauth2.service_account import Credentials
-import pandas as pd
 
 st.set_page_config(
-    page_title="La Trilla - Sistema Integral",
+    page_title="🌾 La Trilla - Sistema Integral",
     layout="wide",
     page_icon="🌾"
 )
 
-# Crear carpetas necesarias (por si acaso)
+# ===================== CARPETAS NECESARIAS =====================
 Path("historial_precios").mkdir(parents=True, exist_ok=True)
 Path("Etiquetas_base").mkdir(parents=True, exist_ok=True)
 
-# ===================== CONEXIÓN A GOOGLE SHEETS =====================
+# ===================== CONEXIÓN A GOOGLE SHEETS (USANDO SECRETS) =====================
 @st.cache_resource
 def get_google_client():
-    creds = Credentials.from_service_account_file(
-        ".streamlit/service_account.json",
+    import gspread
+    from google.oauth2.service_account import Credentials
+    
+    creds = Credentials.from_service_account_info(
+        st.secrets["google_service_account"],
         scopes=["https://www.googleapis.com/auth/spreadsheets"]
     )
     return gspread.authorize(creds)
@@ -26,17 +26,16 @@ def get_google_client():
 @st.cache_resource
 def get_spreadsheet():
     client = get_google_client()
+    # Tu Google Sheet ID (no lo cambies)
     return client.open_by_key("1S3fpi4UYQoNe0kJzic4fhipZqI6BzsmhY9wPRYFd5FM")
 
-# Guardamos el cliente y la hoja en session_state para que todos los módulos lo usen
-if "google_spreadsheet" not in st.session_state:
-    st.session_state.google_spreadsheet = get_spreadsheet()
+st.session_state.google_spreadsheet = get_spreadsheet()
 
 # ===================== CONTRASEÑAS (desde secrets.toml) =====================
 GLOBAL_PASSWORD = st.secrets["global"]["password"]
 CALC_ADMIN_PASSWORD = st.secrets["calculadora"]["password"]
 
-# ===================== CONTRASEÑA GLOBAL DEL SISTEMA =====================
+# ===================== LOGIN GLOBAL =====================
 if "global_logged_in" not in st.session_state:
     st.session_state.global_logged_in = False
 
@@ -58,11 +57,11 @@ if not st.session_state.global_logged_in:
                 st.error("❌ Contraseña incorrecta")
     st.stop()
 
-# ===================== CONTRASEÑA ADMIN PARA CALCULADORA =====================
+# ===================== LOGIN ADMIN PARA CALCULADORA =====================
 if "calc_admin_mode" not in st.session_state:
     st.session_state.calc_admin_mode = False
 
-# ===================== LOGO Y MENÚ =====================
+# ===================== BARRA LATERAL =====================
 st.sidebar.image("LOGO Blanco sin Fondo.png", use_container_width=True)
 st.sidebar.markdown("#### Sistema Integral")
 st.sidebar.markdown("---")
@@ -79,7 +78,7 @@ modulo = st.sidebar.selectbox(
 st.sidebar.markdown("---")
 st.sidebar.caption("Versión Integral - Datos en Google Sheets")
 
-# ===================== MÓDULOS =====================
+# ===================== EJECUCIÓN DE MÓDULOS =====================
 if modulo == "📋 1. Lista de Precios":
     with open("lista_precios_app.py", "r", encoding="utf-8") as f:
         exec(f.read())
