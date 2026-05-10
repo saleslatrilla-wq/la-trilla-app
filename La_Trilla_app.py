@@ -2,9 +2,9 @@ import streamlit as st
 from pathlib import Path
 
 st.set_page_config(
-    page_title="🌾 La Trilla - Sistema Integral",
+    page_title="🧩 Sistema Integral",
     layout="wide",
-    page_icon="🌾"
+    page_icon="📊"
 )
 
 # ===================== CARPETAS =====================
@@ -116,6 +116,5 @@ elif modulo == "📊 3. Calculadora de Precios":
         st.info("Usa el 'Modo Administrador' en la barra lateral para desbloquearla.")
         st.stop()
 
-    st.title("📊 Precios App - Automatizador")
     with open("Calculadora_Precios_app.py", "r", encoding="utf-8") as f:
         exec(f.read())
