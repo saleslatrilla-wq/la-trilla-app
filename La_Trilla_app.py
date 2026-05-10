@@ -7,16 +7,15 @@ st.set_page_config(
     page_icon="🌾"
 )
 
-# ===================== CARPETAS NECESARIAS =====================
+# ===================== CARPETAS =====================
 Path("historial_precios").mkdir(parents=True, exist_ok=True)
 Path("Etiquetas_base").mkdir(parents=True, exist_ok=True)
 
-# ===================== CONEXIÓN A GOOGLE SHEETS (USANDO SECRETS) =====================
+# ===================== GOOGLE SHEETS =====================
 @st.cache_resource
 def get_google_client():
     import gspread
     from google.oauth2.service_account import Credentials
-    
     creds = Credentials.from_service_account_info(
         st.secrets["google_service_account"],
         scopes=["https://www.googleapis.com/auth/spreadsheets"]
@@ -26,12 +25,11 @@ def get_google_client():
 @st.cache_resource
 def get_spreadsheet():
     client = get_google_client()
-    # Tu Google Sheet ID (no lo cambies)
     return client.open_by_key("1S3fpi4UYQoNe0kJzic4fhipZqI6BzsmhY9wPRYFd5FM")
 
 st.session_state.google_spreadsheet = get_spreadsheet()
 
-# ===================== CONTRASEÑAS (desde secrets.toml) =====================
+# ===================== CONTRASEÑAS =====================
 GLOBAL_PASSWORD = st.secrets["global"]["password"]
 CALC_ADMIN_PASSWORD = st.secrets["calculadora"]["password"]
 
@@ -45,7 +43,12 @@ if not st.session_state.global_logged_in:
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.image("LOGO Blanco sin Fondo.png", use_container_width=True)
+        # Imagen con manejo de error
+        try:
+            st.image("LOGO Blanco sin Fondo.png", use_container_width=True)
+        except:
+            st.markdown("### 🌾 La Trilla")
+        
         password = st.text_input("Contraseña del sistema", type="password", placeholder="Ingresa la contraseña")
         
         if st.button("Entrar al Sistema", type="primary", use_container_width=True):
@@ -57,12 +60,16 @@ if not st.session_state.global_logged_in:
                 st.error("❌ Contraseña incorrecta")
     st.stop()
 
-# ===================== LOGIN ADMIN PARA CALCULADORA =====================
+# ===================== ADMIN CALCULADORA =====================
 if "calc_admin_mode" not in st.session_state:
     st.session_state.calc_admin_mode = False
 
 # ===================== BARRA LATERAL =====================
-st.sidebar.image("LOGO Blanco sin Fondo.png", use_container_width=True)
+try:
+    st.sidebar.image("LOGO Blanco sin Fondo.png", use_container_width=True)
+except:
+    st.sidebar.markdown("### 🌾 La Trilla")
+
 st.sidebar.markdown("#### Sistema Integral")
 st.sidebar.markdown("---")
 
