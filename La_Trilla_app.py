@@ -91,7 +91,7 @@ if modulo == "📋 1. Lista de Precios":
         exec(f.read())
 
 elif modulo == "🏭 2. Producción / Envasado":
-    with open("Producción_app.py", "r", encoding="utf-8") as f:
+    with open("Produccipn_app.py", "r", encoding="utf-8") as f:
         exec(f.read())
 
 elif modulo == "📊 3. Calculadora de Precios":
