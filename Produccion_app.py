@@ -104,7 +104,7 @@ else:
         if producto and producto.strip():
             boxes_almacen[caja][producto] = unidades
 
-# ===================== PROGRESO Y MOVIMIENTOS =====================
+# ===================== PROGRESO =====================
 progreso_actual = {}
 df_progreso = load_sheet("progreso_envasado")
 if not df_progreso.empty:
@@ -174,13 +174,13 @@ if st.sidebar.button("🚪 Cerrar Sesión"):
     st.session_state.username = ""
     st.rerun()
 
-# ===================== GENERAR PLAN LÓGICO =====================
+# ===================== GENERAR PLAN LÓGICO (CORREGIDO) =====================
 if is_admin:
     with st.sidebar.expander("📤 Generar Plan de Envasado (Admin)"):
-        st.caption("Sube ProductInputData.xlsx → Plan optimizado 99-100% stock")
+        st.caption("Sube ProductInputData.xlsx → Plan optimizado")
         uploaded_file = st.file_uploader("📁 Selecciona ProductInputData.xlsx", type=["xlsx"], key="input_uploader")
         if uploaded_file and st.button("🚀 Procesar y Generar Plan LÓGICO", type="primary", use_container_width=True):
-            with st.spinner("Optimizando uso del stock..."):
+            with st.spinner("Calculando plan correcto..."):
                 try:
                     df = pd.read_excel(uploaded_file, sheet_name="Datos_Limpios")
                     df.columns = [str(col).strip() for col in df.columns]
@@ -191,11 +191,11 @@ if is_admin:
                                                'Unidades Vendida Semana 4']].sum(axis=1) / 4.0
 
                     df['Producto MP'] = df['Producto']
-                    df['Stock MP (kg)'] = df['Stock Actual'] * df['Formato en Kg']
+                    df['Stock MP (kg)'] = df['Stock Actual'] * df['Formato en Kg'].where(df['Formato en Kg'] > 1, 1)
 
                     plan_rows = []
                     for prod, group in df.groupby("Producto MP"):
-                        stock_total_kg = group["Stock MP (kg)"].iloc[0]
+                        stock_total_kg = group["Stock MP (kg)"].sum()
                         total_demand_kg = (group['demanda_semanal'] * group['Formato en Kg']).sum()
                         scale_factor = stock_total_kg / total_demand_kg if total_demand_kg > 0 else 1.0
 
@@ -220,10 +220,10 @@ if is_admin:
 
                     df_plan_final = pd.DataFrame(plan_rows)
                     save_sheet("Plan_Envasado_Actual", df_plan_final)
-                    st.success("✅ ¡Plan LÓGICO generado y guardado correctamente!")
+                    st.success("✅ ¡Plan LÓGICO corregido y guardado!")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"❌ Error al procesar: {str(e)}")
+                    st.error(f"❌ Error: {str(e)}")
 
 # ===================== PROGRESO GENERAL =====================
 if not is_vendedor and not df_plan.empty:
@@ -461,4 +461,4 @@ else:
         else:
             st.info("Aún no hay datos.")
 
-st.caption("Desarrollado para La Trilla con ❤️ • Plan Lógico v1.4 - Datos en Google Sheets")
+st.caption("Desarrollado para La Trilla con ❤️ • Plan Lógico v1.5 - Datos en Google Sheets")
