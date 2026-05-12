@@ -1,11 +1,8 @@
 import streamlit as st
 import pandas as pd
-import json
-import io
-from pathlib import Path
-from datetime import datetime, date
-import copy
 import numpy as np
+from datetime import datetime
+import copy
 
 st.set_page_config(page_title="La Trilla - Envasado", layout="wide", page_icon="🥜")
 
@@ -72,7 +69,7 @@ username = st.session_state.username
 is_admin = username in ["Joannahan", "Daniela", "Gonzalo"]
 is_vendedor = username == "vendedor"
 
-# ===================== INICIALIZACIÓN DE SESSION STATE (CORREGIDO) =====================
+# ===================== INICIALIZACIÓN SESSION STATE =====================
 if "cajas_asignadas" not in st.session_state:
     st.session_state.cajas_asignadas = {}
 if "progreso_anterior" not in st.session_state:
@@ -87,7 +84,7 @@ df_boxes = load_sheet("box_warehouse")
 boxes_almacen = {}
 
 if df_boxes.empty or len(df_boxes) < 48:
-    st.info("Inicializando las 48 cajas en Google Sheets (solo la primera vez)...")
+    st.info("Inicializando las 48 cajas en Google Sheets...")
     data = []
     for letra in "ABCDEFGHIJKL":
         for num in range(1, 5):
@@ -95,7 +92,7 @@ if df_boxes.empty or len(df_boxes) < 48:
             boxes_almacen[caja] = {}
             data.append({"caja": caja, "producto": "", "unidades": 0})
     save_sheet("box_warehouse", pd.DataFrame(data))
-    st.success("✅ Cajas A1-L4 creadas correctamente")
+    st.success("✅ Cajas A1-L4 creadas")
     st.rerun()
 else:
     for _, row in df_boxes.iterrows():
@@ -107,7 +104,7 @@ else:
         if producto and producto.strip():
             boxes_almacen[caja][producto] = unidades
 
-# ===================== PROGRESO =====================
+# ===================== PROGRESO Y MOVIMIENTOS =====================
 progreso_actual = {}
 df_progreso = load_sheet("progreso_envasado")
 if not df_progreso.empty:
@@ -134,7 +131,6 @@ def guardar_progreso():
     save_sheet("progreso_envasado", pd.DataFrame(data))
 
 def guardar_movimiento(usuario, producto, movimientos, detalle_final):
-    global movimientos_log
     ahora = datetime.now()
     registro = {
         "fecha": ahora.strftime("%Y-%m-%d"),
@@ -148,26 +144,15 @@ def guardar_movimiento(usuario, producto, movimientos, detalle_final):
     movimientos_log.append(registro)
     save_sheet("movimientos_log", pd.DataFrame(movimientos_log))
 
-# ===================== ESTILO =====================
-st.markdown("""
-<style>
-    .stNumberInput input { inputmode: decimal !important; -webkit-appearance: none; -moz-appearance: textfield; }
-</style>
-""", unsafe_allow_html=True)
-
 # ===================== CARGAR PLAN =====================
-if not is_vendedor:
-    df_plan = load_sheet("Plan_Envasado_Actual")
-    # === CORRECCIÓN IMPORTANTE: convertir columnas numéricas ===
-    if not df_plan.empty:
-        numeric_cols = ['Stock MP (kg)', 'Kg Usados', 'Unidades a Envasar', 'Cobertura (semanas)', 'Stock Actual', 'Formato en Kg']
-        for col in numeric_cols:
-            if col in df_plan.columns:
-                df_plan[col] = pd.to_numeric(df_plan[col], errors='coerce').fillna(0)
-else:
-    df_plan = pd.DataFrame()
+df_plan = load_sheet("Plan_Envasado_Actual") if not is_vendedor else pd.DataFrame()
+if not df_plan.empty:
+    numeric_cols = ['Stock MP (kg)', 'Kg Usados', 'Unidades a Envasar', 'Cobertura (semanas)', 'Stock Actual', 'Formato en Kg', '% Stock Asignado']
+    for col in numeric_cols:
+        if col in df_plan.columns:
+            df_plan[col] = pd.to_numeric(df_plan[col], errors='coerce').fillna(0)
 
-# ===================== BARRA LATERAL ====================
+# ===================== BARRA LATERAL =====================
 st.sidebar.header("Filtros y Navegación")
 
 if is_vendedor:
@@ -189,35 +174,56 @@ if st.sidebar.button("🚪 Cerrar Sesión"):
     st.session_state.username = ""
     st.rerun()
 
-# ===================== GENERAR PLAN =====================
+# ===================== GENERAR PLAN LÓGICO =====================
 if is_admin:
     with st.sidebar.expander("📤 Generar Plan de Envasado (Admin)"):
-        st.caption("Sube ProductInputData.xlsx → genera y guarda el plan")
+        st.caption("Sube ProductInputData.xlsx → Plan optimizado 99-100% stock")
         uploaded_file = st.file_uploader("📁 Selecciona ProductInputData.xlsx", type=["xlsx"], key="input_uploader")
-        if uploaded_file is not None:
-            if st.button("🚀 Procesar y Generar Plan de Envasado", type="primary", use_container_width=True):
-                with st.spinner("Analizando datos y guardando en Google Sheets..."):
-                    try:
-                        df = pd.read_excel(uploaded_file, sheet_name="Datos_Limpios")
-                        df.columns = [str(col).strip() for col in df.columns]
+        if uploaded_file and st.button("🚀 Procesar y Generar Plan LÓGICO", type="primary", use_container_width=True):
+            with st.spinner("Optimizando uso del stock..."):
+                try:
+                    df = pd.read_excel(uploaded_file, sheet_name="Datos_Limpios")
+                    df.columns = [str(col).strip() for col in df.columns]
 
-                        df['demanda_semanal'] = df[['Unidades Vendida Semana 1',
-                                                   'Unidades Vendida Semana 2',
-                                                   'Unidades Vendida Semana 3',
-                                                   'Unidades Vendida Semana 4']].sum(axis=1) / 4.0
+                    df['demanda_semanal'] = df[['Unidades Vendida Semana 1',
+                                               'Unidades Vendida Semana 2',
+                                               'Unidades Vendida Semana 3',
+                                               'Unidades Vendida Semana 4']].sum(axis=1) / 4.0
 
-                        df['Producto MP'] = df['Producto']
-                        df['Stock MP (kg)'] = df['Stock Actual']
-                        df['Kg Usados'] = df['demanda_semanal'] * df['Formato en Kg']
-                        df['Unidades a Envasar'] = df['demanda_semanal']
-                        df['Cobertura (semanas)'] = df['Stock Actual'] / df['demanda_semanal'].replace(0, 1)
+                    df['Producto MP'] = df['Producto']
+                    df['Stock MP (kg)'] = df['Stock Actual'] * df['Formato en Kg']
 
-                        save_sheet("Plan_Envasado_Actual", df)
+                    plan_rows = []
+                    for prod, group in df.groupby("Producto MP"):
+                        stock_total_kg = group["Stock MP (kg)"].iloc[0]
+                        total_demand_kg = (group['demanda_semanal'] * group['Formato en Kg']).sum()
+                        scale_factor = stock_total_kg / total_demand_kg if total_demand_kg > 0 else 1.0
 
-                        st.success("✅ ¡Plan generado y guardado permanentemente en Google Sheets!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ Error al procesar: {str(e)}")
+                        for _, row in group.iterrows():
+                            unidades_plan = round(row['demanda_semanal'] * scale_factor)
+                            kg_usados = round(unidades_plan * row['Formato en Kg'], 2)
+                            stock_final = round(stock_total_kg - kg_usados, 2)
+                            pct_asignado = round((kg_usados / stock_total_kg * 100), 1) if stock_total_kg > 0 else 0
+                            cobertura = round(stock_total_kg / (kg_usados / 4), 2) if kg_usados > 0 else 0
+
+                            plan_rows.append({
+                                "Producto MP": prod,
+                                "Stock MP (kg)": round(stock_total_kg, 2),
+                                "Formato": row["Formato"],
+                                "Stock Actual": row["Stock Actual"],
+                                "Unidades a Envasar": int(unidades_plan),
+                                "Kg Usados": kg_usados,
+                                "% Stock Asignado": pct_asignado,
+                                "Stock Final": stock_final,
+                                "Cobertura (semanas)": cobertura
+                            })
+
+                    df_plan_final = pd.DataFrame(plan_rows)
+                    save_sheet("Plan_Envasado_Actual", df_plan_final)
+                    st.success("✅ ¡Plan LÓGICO generado y guardado correctamente!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Error al procesar: {str(e)}")
 
 # ===================== PROGRESO GENERAL =====================
 if not is_vendedor and not df_plan.empty:
@@ -240,7 +246,6 @@ if not is_vendedor and not df_plan.empty:
             productos_completados += 1
 
     porcentaje_global = (total_kg_real / total_kg_plan * 100) if total_kg_plan > 0 else 0
-
     st.subheader("📊 Progreso General del Plan")
     col1, col2, col3 = st.columns([1, 4, 1])
     with col1:
@@ -253,7 +258,9 @@ if not is_vendedor and not df_plan.empty:
     st.divider()
 
 # ===================== VISTAS =====================
-if is_vendedor:
+df_grouped = df_plan.groupby("Producto MP") if not df_plan.empty else None
+
+if is_vendedor or vista == "BOX warehouse":
     st.subheader("📦 BOX Warehouse")
     tab_ver, tab_modificar = st.tabs(["📋 Ver Contenido", "✏️ Modificar Cajas"])
     with tab_ver:
@@ -300,8 +307,6 @@ if is_vendedor:
                 st.rerun()
 
 else:
-    df_grouped = df_plan.groupby("Producto MP") if not df_plan.empty else None
-
     if vista == "Dashboard":
         for producto, group in df_grouped:
             if st.session_state.busqueda_forzada and producto != st.session_state.busqueda_forzada:
@@ -318,9 +323,9 @@ else:
                     st.subheader(producto)
                     st.markdown(f"**Stock MP: {stock_mp} kg**", unsafe_allow_html=True)
                 with col_status:
-                    producto_completado = st.checkbox("✅ Marcar producto como COMPLETO",
-                        value=all(progreso_actual.get(f"{key_producto}_{row['Formato']}", {}).get("completado", False) for _, row in group.iterrows()),
-                        key=f"chk_prod_{key_producto}")
+                    st.checkbox("✅ Marcar producto como COMPLETO",
+                                value=all(progreso_actual.get(f"{key_producto}_{row['Formato']}", {}).get("completado", False) for _, row in group.iterrows()),
+                                key=f"chk_prod_{key_producto}")
 
                 for _, row in group.sort_values(by="Formato").iterrows():
                     formato = row["Formato"]
@@ -361,12 +366,6 @@ else:
                             progreso_actual[key_formato]["completado"] = auto_completado
                             if auto_completado:
                                 st.success("✅ Completado")
-
-                total_plan = sum(int(row["Unidades a Envasar"]) for _, row in group.iterrows() if row["Unidades a Envasar"] > 0)
-                total_real = sum(progreso_actual.get(f"{key_producto}_{row['Formato']}", {}).get("unidades_real", 0) for _, row in group.iterrows())
-                progreso_general = min(total_real / total_plan, 1.0) if total_plan > 0 else 0
-                st.progress(progreso_general)
-                st.caption(f"{progreso_general*100:.0f}% completado del producto")
 
                 if st.button("Guardar registro", type="primary", use_container_width=True, key=f"btn_{key_producto}"):
                     movimientos = []
@@ -451,52 +450,6 @@ else:
         else:
             st.info("No hay productos para mostrar")
 
-    elif vista == "BOX warehouse":
-        st.subheader("📦 BOX Warehouse")
-        tab_ver, tab_modificar = st.tabs(["📋 Ver Contenido", "✏️ Modificar Cajas"])
-        with tab_ver:
-            busqueda_box = st.text_input("🔎 Buscar producto", placeholder="Nombre del producto...", key="busqueda_box")
-            if busqueda_box:
-                resultados = []
-                for caja, contenido in boxes_almacen.items():
-                    for producto, unidades in contenido.items():
-                        if busqueda_box.lower() in producto.lower():
-                            resultados.append({"Caja": caja, "Producto": producto, "Unidades": unidades})
-                if resultados:
-                    st.dataframe(pd.DataFrame(resultados), use_container_width=True, hide_index=True)
-                else:
-                    st.warning("No se encontró el producto en ninguna caja.")
-            else:
-                st.write("**Contenido de las cajas:**")
-                cols = st.columns(4)
-                for i, (caja, contenido) in enumerate(boxes_almacen.items()):
-                    with cols[i % 4]:
-                        with st.container(border=True):
-                            st.markdown(f"**{caja}**")
-                            if contenido:
-                                for producto, unidades in contenido.items():
-                                    nombre_limpio = producto.split(" Saco ")[0].strip()
-                                    st.markdown(f"**{nombre_limpio}**<br><small>{unidades} uds</small>", unsafe_allow_html=True)
-                            else:
-                                st.caption("Vacía")
-        with tab_modificar:
-            st.write("**Modificar contenido de cajas**")
-            caja_seleccionada = st.selectbox("Seleccionar caja", options=list(boxes_almacen.keys()), key="mod_caja")
-            if caja_seleccionada in boxes_almacen:
-                contenido = boxes_almacen[caja_seleccionada]
-                nuevo_contenido = dict(contenido)
-                if contenido:
-                    for producto, unidades in list(contenido.items()):
-                        nueva_unidad = st.number_input(f"{producto}", value=unidades, step=1, min_value=0, key=f"mod_unid_{caja_seleccionada}_{producto}")
-                        nuevo_contenido[producto] = nueva_unidad
-                else:
-                    st.caption("Caja vacía")
-                if st.button("Guardar cambios", type="primary", use_container_width=True):
-                    boxes_almacen[caja_seleccionada] = {p: u for p, u in nuevo_contenido.items() if u > 0}
-                    guardar_boxes()
-                    st.success("✅ Cambios guardados")
-                    st.rerun()
-
     elif vista == "Gráfico Diario" and is_admin:
         st.subheader("📈 Progreso Diario de Producción")
         if movimientos_log:
@@ -508,4 +461,4 @@ else:
         else:
             st.info("Aún no hay datos.")
 
-st.caption("Desarrollado para La Trilla con ❤️ • Datos en Google Sheets v1.3")
+st.caption("Desarrollado para La Trilla con ❤️ • Plan Lógico v1.4 - Datos en Google Sheets")
