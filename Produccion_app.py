@@ -24,6 +24,8 @@ def save_sheet(sheet_name, df):
     except:
         worksheet = spreadsheet.add_worksheet(title=sheet_name, rows="2000", cols="50")
     worksheet.clear()
+    # ←←← FIX PARA EL ERROR NaN JSON
+    df = df.replace([np.nan, np.inf, -np.inf], [None, None, None])
     if not df.empty:
         worksheet.update([df.columns.values.tolist()] + df.values.tolist())
     else:
@@ -180,24 +182,23 @@ if st.sidebar.button("🚪 Cerrar Sesión"):
     st.session_state.username = ""
     st.rerun()
 
-# ===================== GENERAR PLAN DE ENVASADO =====================
+# ===================== GENERAR PLAN =====================
 if is_admin:
     with st.sidebar.expander("📤 Generar Plan de Envasado (Admin)"):
         st.caption("Sube ProductInputData.xlsx → genera y guarda el plan")
         uploaded_file = st.file_uploader("📁 Selecciona ProductInputData.xlsx", type=["xlsx"], key="input_uploader")
-        
         if uploaded_file is not None:
             if st.button("🚀 Procesar y Generar Plan de Envasado", type="primary", use_container_width=True):
-                with st.spinner("Calculando plan y guardando en Google Sheets..."):
+                with st.spinner("Calculando plan..."):
                     try:
                         df = pd.read_excel(uploaded_file, sheet_name="Datos_Limpios")
                         df.columns = [str(col).strip() for col in df.columns]
 
-                        # Cálculos basados en tus columnas reales
-                        df['demanda_semanal'] = df[['Unidades Vendida Semana 1', 
-                                                   'Unidades Vendida Semana 2', 
-                                                   'Unidades Vendida Semana 3', 
-                                                   'Unidades Vendida Semana 4']].sum(axis=1) / 4.0
+                        # Cálculos con tus columnas reales
+                        df['demanda_semanal'] = df[['Unidades Vendida Semana 1',
+                                                    'Unidades Vendida Semana 2',
+                                                    'Unidades Vendida Semana 3',
+                                                    'Unidades Vendida Semana 4']].sum(axis=1) / 4.0
 
                         df['Producto MP'] = df['Producto']
                         df['Stock MP (kg)'] = df['Stock Actual']
@@ -205,14 +206,12 @@ if is_admin:
                         df['Unidades a Envasar'] = df['demanda_semanal']
                         df['Cobertura (semanas)'] = df['Stock Actual'] / df['demanda_semanal'].replace(0, 1)
 
-                        # Guardar el plan calculado
                         save_sheet("Plan_Envasado_Actual", df)
 
-                        st.success("✅ ¡Plan generado y guardado permanentemente en Google Sheets!")
+                        st.success("✅ Plan generado y guardado en Google Sheets!")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"❌ Error al procesar: {str(e)}")
-                        st.info("Verifica que el archivo tenga la pestaña 'Datos_Limpios'")
+                        st.error(f"❌ Error: {str(e)}")
 
 # ===================== PROGRESO GENERAL =====================
 if not is_vendedor and not df_plan.empty:
@@ -247,7 +246,7 @@ if not is_vendedor and not df_plan.empty:
     st.caption(f"**{total_kg_real:.1f} kg** envasados de **{total_kg_plan:.1f} kg** planificados")
     st.divider()
 
-# ===================== VISTAS =====================
+# ===================== VISTAS (Dashboard, Lista, BOX, Gráfico) =====================
 if is_vendedor:
     st.subheader("📦 BOX Warehouse")
     tab_ver, tab_modificar = st.tabs(["📋 Ver Contenido", "✏️ Modificar Cajas"])
