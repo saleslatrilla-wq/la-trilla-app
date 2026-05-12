@@ -74,7 +74,6 @@ is_envasado = username == "envasados"
 is_vendedor = username == "vendedor"
 
 # ===================== BOX WAREHOUSE Y PROGRESO =====================
-# (mantengo exactamente tu lógica original)
 df_boxes = load_sheet("box_warehouse")
 boxes_almacen = {}
 
@@ -187,8 +186,10 @@ if is_admin:
                         df.columns = [str(col).strip() for col in df.columns]
 
                         # Cálculos con tus columnas reales
-                        df['demanda_semanal'] = df[['Unidades Vendida Semana 1', 'Unidades Vendida Semana 2',
-                                                   'Unidades Vendida Semana 3', 'Unidades Vendida Semana 4']].sum(axis=1) / 4.0
+                        df['demanda_semanal'] = df[['Unidades Vendida Semana 1',
+                                                   'Unidades Vendida Semana 2',
+                                                   'Unidades Vendida Semana 3',
+                                                   'Unidades Vendida Semana 4']].sum(axis=1) / 4.0
 
                         df['Producto MP'] = df['Producto']
                         df['Stock MP (kg)'] = df['Stock Actual']
@@ -204,7 +205,7 @@ if is_admin:
                         st.error(f"❌ Error al procesar: {str(e)}")
                         st.info("Verifica que el archivo tenga la pestaña 'Datos_Limpios'")
 
-# ===================== PROGRESO GENERAL =====================
+# ===================== PROGRESO GENERAL DEL PLAN =====================
 if not is_vendedor and not df_plan.empty:
     total_kg_plan = df_plan["Kg Usados"].sum()
     total_kg_real = 0
@@ -238,8 +239,6 @@ if not is_vendedor and not df_plan.empty:
     st.divider()
 
 # ===================== VISTAS (Dashboard, Lista, BOX, Gráfico) =====================
-# (Todo el código original que tenías se mantiene completo aquí)
-
 if is_vendedor:
     st.subheader("📦 BOX Warehouse")
     tab_ver, tab_modificar = st.tabs(["📋 Ver Contenido", "✏️ Modificar Cajas"])
@@ -437,8 +436,6 @@ else:
                     st.rerun()
         else:
             st.info("No hay productos para mostrar")
-
-    # (el resto de las vistas BOX warehouse y Gráfico Diario se mantienen exactamente como en tu código original)
 
     elif vista == "BOX warehouse":
         st.subheader("📦 BOX Warehouse")
