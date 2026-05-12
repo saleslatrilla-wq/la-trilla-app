@@ -4,7 +4,6 @@ from datetime import datetime, date
 import copy
 import numpy as np
 from pathlib import Path
-import io
 
 st.set_page_config(page_title="La Trilla - Envasado", layout="wide", page_icon="🥜")
 
@@ -20,7 +19,10 @@ def load_sheet(sheet_name):
         return pd.DataFrame()
 
 def save_sheet(sheet_name, df):
-    worksheet = spreadsheet.worksheet(sheet_name)
+    try:
+        worksheet = spreadsheet.worksheet(sheet_name)
+    except:
+        worksheet = spreadsheet.add_worksheet(title=sheet_name, rows="2000", cols="50")
     worksheet.clear()
     if not df.empty:
         worksheet.update([df.columns.values.tolist()] + df.values.tolist())
@@ -156,12 +158,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ===================== CARGAR PLANIFICACIÓN =====================
+# ===================== CARGAR PLAN DESDE GOOGLE SHEETS =====================
 if not is_vendedor:
-    @st.cache_data
-    def cargar_planificacion():
-        return pd.read_excel("ProductOutputData.xlsx", sheet_name="Análisis Envasado")
-    df_plan = cargar_planificacion()
+    df_plan = load_sheet("Plan_Envasado_Actual")
 else:
     df_plan = pd.DataFrame()
 
@@ -227,11 +226,11 @@ if is_admin:
                 st.info("Aún no hay movimientos registrados")
 
     with st.sidebar.expander("📤 Generar Plan de Envasado (Admin)"):
-        st.caption("Sube ProductInputData.xlsx → genera ProductOutputData.xlsx")
+        st.caption("Sube ProductInputData.xlsx → guarda automáticamente en Google Sheets")
         uploaded_file = st.file_uploader("📁 Selecciona ProductInputData.xlsx", type=["xlsx"], key="input_uploader")
         if uploaded_file is not None:
             if st.button("🚀 Procesar y Generar Plan de Envasado", type="primary", use_container_width=True):
-                with st.spinner("Analizando datos y generando el plan..."):
+                with st.spinner("Analizando datos y guardando en Google Sheets..."):
                     try:
                         df = pd.read_excel(uploaded_file, sheet_name="Datos_Limpios")
                         df.columns = [str(col).strip() for col in df.columns]
@@ -239,7 +238,11 @@ if is_admin:
                         for col in numeric_cols:
                             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
                         df['demanda_semanal'] = df[[col for col in df.columns if "Semana" in str(col)]].sum(axis=1) / 4.0
-                        st.success("✅ ¡Plan generado correctamente!")
+                        
+                        # GUARDAR PLAN EN GOOGLE SHEETS
+                        save_sheet("Plan_Envasado_Actual", df)
+                        
+                        st.success("✅ ¡Plan generado y guardado permanentemente en Google Sheets!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"❌ Error al procesar: {str(e)}")
@@ -281,6 +284,7 @@ if not is_vendedor and not df_plan.empty:
 if is_vendedor:
     st.subheader("📦 BOX Warehouse")
     tab_ver, tab_modificar = st.tabs(["📋 Ver Contenido", "✏️ Modificar Cajas"])
+    # ... (todo el código de BOX warehouse se mantiene exactamente igual) ...
     with tab_ver:
         busqueda_box = st.text_input("🔎 Buscar producto", placeholder="Nombre del producto...", key="busqueda_box")
         if busqueda_box:
@@ -328,6 +332,7 @@ else:
     df_grouped = df_plan.groupby("Producto MP") if not df_plan.empty else None
 
     if vista == "Dashboard":
+        # ... (todo el código del Dashboard se mantiene exactamente igual) ...
         for producto, group in df_grouped:
             if st.session_state.busqueda_forzada and producto != st.session_state.busqueda_forzada:
                 continue
@@ -427,6 +432,7 @@ else:
                     st.rerun()
 
     elif vista == "Lista de Prioridad":
+        # ... (todo el código de Lista de Prioridad se mantiene igual) ...
         st.subheader("📋 Lista de Prioridad (qué envasar primero)")
         prioridad_data = []
         for producto, group in df_grouped:
@@ -477,6 +483,7 @@ else:
             st.info("No hay productos para mostrar")
 
     elif vista == "BOX warehouse":
+        # ... (todo el código de BOX warehouse se mantiene igual) ...
         st.subheader("📦 BOX Warehouse")
         tab_ver, tab_modificar = st.tabs(["📋 Ver Contenido", "✏️ Modificar Cajas"])
         with tab_ver:
@@ -533,4 +540,4 @@ else:
         else:
             st.info("Aún no hay datos.")
 
-st.caption("Desarrollado para La Trilla con ❤️ • Datos en Google Sheets v1.0")
+st.caption("Desarrollado para La Trilla con ❤️ • Datos en Google Sheets v1.1")
