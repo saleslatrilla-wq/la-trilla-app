@@ -70,10 +70,19 @@ if not login():
 # ===================== PERMISOS =====================
 username = st.session_state.username
 is_admin = username in ["Joannahan", "Daniela", "Gonzalo"]
-is_envasado = username == "envasados"
 is_vendedor = username == "vendedor"
 
-# ===================== BOX WAREHOUSE Y PROGRESO =====================
+# ===================== INICIALIZACIÓN DE SESSION STATE (AQUÍ ESTABA EL ERROR) =====================
+if "cajas_asignadas" not in st.session_state:
+    st.session_state.cajas_asignadas = {}
+if "progreso_anterior" not in st.session_state:
+    st.session_state.progreso_anterior = {}
+if "vista_seleccionada" not in st.session_state:
+    st.session_state.vista_seleccionada = "BOX warehouse" if is_vendedor else "Lista de Prioridad"
+if "busqueda_forzada" not in st.session_state:
+    st.session_state.busqueda_forzada = ""
+
+# ===================== BOX WAREHOUSE =====================
 df_boxes = load_sheet("box_warehouse")
 boxes_almacen = {}
 
@@ -98,6 +107,7 @@ else:
         if producto and producto.strip():
             boxes_almacen[caja][producto] = unidades
 
+# ===================== PROGRESO =====================
 progreso_actual = {}
 df_progreso = load_sheet("progreso_envasado")
 if not df_progreso.empty:
@@ -173,7 +183,7 @@ if st.sidebar.button("🚪 Cerrar Sesión"):
     st.session_state.username = ""
     st.rerun()
 
-# ===================== GENERAR PLAN (CORREGIDO) =====================
+# ===================== GENERAR PLAN DE ENVASADO =====================
 if is_admin:
     with st.sidebar.expander("📤 Generar Plan de Envasado (Admin)"):
         st.caption("Sube ProductInputData.xlsx → genera y guarda el plan")
@@ -185,7 +195,6 @@ if is_admin:
                         df = pd.read_excel(uploaded_file, sheet_name="Datos_Limpios")
                         df.columns = [str(col).strip() for col in df.columns]
 
-                        # Cálculos con tus columnas reales
                         df['demanda_semanal'] = df[['Unidades Vendida Semana 1',
                                                    'Unidades Vendida Semana 2',
                                                    'Unidades Vendida Semana 3',
@@ -203,7 +212,6 @@ if is_admin:
                         st.rerun()
                     except Exception as e:
                         st.error(f"❌ Error al procesar: {str(e)}")
-                        st.info("Verifica que el archivo tenga la pestaña 'Datos_Limpios'")
 
 # ===================== PROGRESO GENERAL DEL PLAN =====================
 if not is_vendedor and not df_plan.empty:
