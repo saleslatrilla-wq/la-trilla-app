@@ -72,7 +72,7 @@ username = st.session_state.username
 is_admin = username in ["Joannahan", "Daniela", "Gonzalo"]
 is_vendedor = username == "vendedor"
 
-# ===================== INICIALIZACIÓN DE SESSION STATE (AQUÍ ESTABA EL ERROR) =====================
+# ===================== INICIALIZACIÓN DE SESSION STATE (CORREGIDO) =====================
 if "cajas_asignadas" not in st.session_state:
     st.session_state.cajas_asignadas = {}
 if "progreso_anterior" not in st.session_state:
@@ -183,7 +183,7 @@ if st.sidebar.button("🚪 Cerrar Sesión"):
     st.session_state.username = ""
     st.rerun()
 
-# ===================== GENERAR PLAN DE ENVASADO =====================
+# ===================== GENERAR PLAN DE ENVASADO (CORREGIDO) =====================
 if is_admin:
     with st.sidebar.expander("📤 Generar Plan de Envasado (Admin)"):
         st.caption("Sube ProductInputData.xlsx → genera y guarda el plan")
@@ -195,6 +195,7 @@ if is_admin:
                         df = pd.read_excel(uploaded_file, sheet_name="Datos_Limpios")
                         df.columns = [str(col).strip() for col in df.columns]
 
+                        # Cálculos con las columnas reales de tu archivo
                         df['demanda_semanal'] = df[['Unidades Vendida Semana 1',
                                                    'Unidades Vendida Semana 2',
                                                    'Unidades Vendida Semana 3',
@@ -246,7 +247,7 @@ if not is_vendedor and not df_plan.empty:
     st.caption(f"**{total_kg_real:.1f} kg** envasados de **{total_kg_plan:.1f} kg** planificados")
     st.divider()
 
-# ===================== VISTAS (Dashboard, Lista, BOX, Gráfico) =====================
+# ===================== VISTAS =====================
 if is_vendedor:
     st.subheader("📦 BOX Warehouse")
     tab_ver, tab_modificar = st.tabs(["📋 Ver Contenido", "✏️ Modificar Cajas"])
