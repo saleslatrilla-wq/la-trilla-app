@@ -4,6 +4,7 @@ from datetime import datetime, date
 import copy
 import numpy as np
 from pathlib import Path
+import io
 
 st.set_page_config(page_title="La Trilla - Envasado", layout="wide", page_icon="🥜")
 
@@ -234,18 +235,27 @@ if is_admin:
                     try:
                         df = pd.read_excel(uploaded_file, sheet_name="Datos_Limpios")
                         df.columns = [str(col).strip() for col in df.columns]
+
+                        # Verificar columnas obligatorias
+                        required_cols = ['Producto MP', 'Formato', 'Kg Usados', 'Unidades a Envasar', 'Stock MP (kg)', 'Cobertura (semanas)', 'Stock Actual', 'Formato en Kg']
+                        missing = [col for col in required_cols if col not in df.columns]
+                        if missing:
+                            st.error(f"❌ Faltan columnas en el Excel: {missing}")
+                            st.stop()
+
                         numeric_cols = ['Stock Actual', 'Formato en Kg'] + [col for col in df.columns if "Semana" in str(col)]
                         for col in numeric_cols:
                             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
                         df['demanda_semanal'] = df[[col for col in df.columns if "Semana" in str(col)]].sum(axis=1) / 4.0
-                        
-                        # GUARDAR PLAN EN GOOGLE SHEETS
+
+                        # GUARDAR EN GOOGLE SHEETS
                         save_sheet("Plan_Envasado_Actual", df)
-                        
+
                         st.success("✅ ¡Plan generado y guardado permanentemente en Google Sheets!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"❌ Error al procesar: {str(e)}")
+                        st.info("Asegúrate de que el archivo tenga la pestaña 'Datos_Limpios' y las columnas correctas.")
 
 # ===================== PROGRESO GENERAL DEL PLAN =====================
 if not is_vendedor and not df_plan.empty:
@@ -284,7 +294,6 @@ if not is_vendedor and not df_plan.empty:
 if is_vendedor:
     st.subheader("📦 BOX Warehouse")
     tab_ver, tab_modificar = st.tabs(["📋 Ver Contenido", "✏️ Modificar Cajas"])
-    # ... (todo el código de BOX warehouse se mantiene exactamente igual) ...
     with tab_ver:
         busqueda_box = st.text_input("🔎 Buscar producto", placeholder="Nombre del producto...", key="busqueda_box")
         if busqueda_box:
@@ -332,7 +341,6 @@ else:
     df_grouped = df_plan.groupby("Producto MP") if not df_plan.empty else None
 
     if vista == "Dashboard":
-        # ... (todo el código del Dashboard se mantiene exactamente igual) ...
         for producto, group in df_grouped:
             if st.session_state.busqueda_forzada and producto != st.session_state.busqueda_forzada:
                 continue
@@ -432,7 +440,6 @@ else:
                     st.rerun()
 
     elif vista == "Lista de Prioridad":
-        # ... (todo el código de Lista de Prioridad se mantiene igual) ...
         st.subheader("📋 Lista de Prioridad (qué envasar primero)")
         prioridad_data = []
         for producto, group in df_grouped:
@@ -483,7 +490,6 @@ else:
             st.info("No hay productos para mostrar")
 
     elif vista == "BOX warehouse":
-        # ... (todo el código de BOX warehouse se mantiene igual) ...
         st.subheader("📦 BOX Warehouse")
         tab_ver, tab_modificar = st.tabs(["📋 Ver Contenido", "✏️ Modificar Cajas"])
         with tab_ver:
@@ -540,4 +546,4 @@ else:
         else:
             st.info("Aún no hay datos.")
 
-st.caption("Desarrollado para La Trilla con ❤️ • Datos en Google Sheets v1.1")
+st.caption("Desarrollado para La Trilla con ❤️ • Datos en Google Sheets v1.2")
