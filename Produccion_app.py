@@ -191,6 +191,7 @@ if is_admin:
                                                'Unidades Vendida Semana 4']].sum(axis=1) / 4.0
 
                     df['Producto MP'] = df['Producto']
+                    # CORRECCIÓN: Stock MP solo se calcula correctamente
                     df['Stock MP (kg)'] = df['Stock Actual'] * df['Formato en Kg'].where(df['Formato en Kg'] > 1, 1)
 
                     plan_rows = []
