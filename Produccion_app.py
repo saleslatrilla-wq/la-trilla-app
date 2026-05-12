@@ -3,7 +3,6 @@ import pandas as pd
 from datetime import datetime, date
 import copy
 import numpy as np
-from pathlib import Path
 import io
 
 st.set_page_config(page_title="La Trilla - Envasado", layout="wide", page_icon="🥜")
@@ -68,10 +67,9 @@ if not login():
 # ===================== PERMISOS =====================
 username = st.session_state.username
 is_admin = username in ["Joannahan", "Daniela", "Gonzalo"]
-is_envasado = username == "envasados"
 is_vendedor = username == "vendedor"
 
-# ===================== INICIALIZACIÓN DE SESSION STATE =====================
+# ===================== INICIALIZACIÓN =====================
 if "cajas_asignadas" not in st.session_state:
     st.session_state.cajas_asignadas = {}
 if "progreso_anterior" not in st.session_state:
@@ -81,7 +79,7 @@ if "vista_seleccionada" not in st.session_state:
 if "busqueda_forzada" not in st.session_state:
     st.session_state.busqueda_forzada = ""
 
-# ===================== CARGAR / INICIALIZAR BOX WAREHOUSE =====================
+# ===================== BOX WAREHOUSE =====================
 df_boxes = load_sheet("box_warehouse")
 boxes_almacen = {}
 
@@ -106,7 +104,7 @@ else:
         if producto and producto.strip():
             boxes_almacen[caja][producto] = unidades
 
-# ===================== CARGAR PROGRESO =====================
+# ===================== PROGRESO =====================
 progreso_actual = {}
 df_progreso = load_sheet("progreso_envasado")
 if not df_progreso.empty:
@@ -119,7 +117,6 @@ if not df_progreso.empty:
 
 movimientos_log = load_sheet("movimientos_log").to_dict('records') if not load_sheet("movimientos_log").empty else []
 
-# ===================== FUNCIONES DE GUARDADO =====================
 def guardar_boxes():
     data = []
     for caja, contenido in boxes_almacen.items():
@@ -130,11 +127,7 @@ def guardar_boxes():
 def guardar_progreso():
     data = []
     for key, info in progreso_actual.items():
-        data.append({
-            "key": key,
-            "unidades_real": info["unidades_real"],
-            "completado": info["completado"]
-        })
+        data.append({"key": key, "unidades_real": info["unidades_real"], "completado": info["completado"]})
     save_sheet("progreso_envasado", pd.DataFrame(data))
 
 def guardar_movimiento(usuario, producto, movimientos, detalle_final):
@@ -159,13 +152,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ===================== CARGAR PLAN DESDE GOOGLE SHEETS =====================
+# ===================== CARGAR PLAN =====================
 if not is_vendedor:
     df_plan = load_sheet("Plan_Envasado_Actual")
 else:
     df_plan = pd.DataFrame()
 
-# ===================== BARRA LATERAL ====================
+# ===================== BARRA LATERAL =====================
 st.sidebar.header("Filtros y Navegación")
 
 if is_vendedor:
@@ -187,77 +180,41 @@ if st.sidebar.button("🚪 Cerrar Sesión"):
     st.session_state.username = ""
     st.rerun()
 
-# ===================== ADMIN EXPANDERS =====================
+# ===================== GENERAR PLAN DE ENVASADO =====================
 if is_admin:
-    with st.sidebar.expander("📊 Reporte de Movimientos"):
-        st.caption("Descargar historial completo de guardados")
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            fecha_inicio = st.date_input("Desde", value=date.today().replace(day=1))
-        with col_f2:
-            fecha_fin = st.date_input("Hasta", value=date.today())
-        if st.button("Descargar Reporte Excel", type="primary", use_container_width=True):
-            df_mov = pd.DataFrame(movimientos_log)
-            if not df_mov.empty:
-                df_mov["fecha_dt"] = pd.to_datetime(df_mov["fecha"])
-                mask = (df_mov["fecha_dt"] >= pd.Timestamp(fecha_inicio)) & (df_mov["fecha_dt"] <= pd.Timestamp(fecha_fin))
-                df_filtered = df_mov[mask].copy()
-                records = []
-                for _, row in df_filtered.iterrows():
-                    base = {"fecha": row["fecha"], "hora": row["hora"], "timestamp": row["timestamp"],
-                            "usuario": row["usuario"], "producto": row["producto"]}
-                    detalle_final = row.get("detalle_final", {})
-                    for mov in row.get("movimientos", []):
-                        new_row = base.copy()
-                        formato = mov.get("formato")
-                        new_row["formato"] = formato
-                        new_row["tipo_movimiento"] = mov.get("tipo")
-                        new_row["Cantidad"] = mov.get("cantidad")
-                        new_row["Cantidad_Final"] = detalle_final.get(formato, 0)
-                        records.append(new_row)
-                df_reporte = pd.DataFrame(records)
-                df_reporte = df_reporte[["fecha", "hora", "timestamp", "usuario", "producto", "formato", "tipo_movimiento", "Cantidad", "Cantidad_Final"]]
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-                    df_reporte.to_excel(writer, index=False, sheet_name="Movimientos")
-                buffer.seek(0)
-                st.download_button("📥 Descargar Reporte.xlsx", data=buffer, file_name=f"Reporte_Movimientos_{fecha_inicio}_{fecha_fin}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                st.success("✅ Reporte generado")
-            else:
-                st.info("Aún no hay movimientos registrados")
-
     with st.sidebar.expander("📤 Generar Plan de Envasado (Admin)"):
-        st.caption("Sube ProductInputData.xlsx → guarda automáticamente en Google Sheets")
+        st.caption("Sube ProductInputData.xlsx → genera y guarda el plan")
         uploaded_file = st.file_uploader("📁 Selecciona ProductInputData.xlsx", type=["xlsx"], key="input_uploader")
+        
         if uploaded_file is not None:
             if st.button("🚀 Procesar y Generar Plan de Envasado", type="primary", use_container_width=True):
-                with st.spinner("Analizando datos y guardando en Google Sheets..."):
+                with st.spinner("Calculando plan y guardando en Google Sheets..."):
                     try:
                         df = pd.read_excel(uploaded_file, sheet_name="Datos_Limpios")
                         df.columns = [str(col).strip() for col in df.columns]
 
-                        # Verificar columnas obligatorias
-                        required_cols = ['Producto MP', 'Formato', 'Kg Usados', 'Unidades a Envasar', 'Stock MP (kg)', 'Cobertura (semanas)', 'Stock Actual', 'Formato en Kg']
-                        missing = [col for col in required_cols if col not in df.columns]
-                        if missing:
-                            st.error(f"❌ Faltan columnas en el Excel: {missing}")
-                            st.stop()
+                        # Cálculos basados en tus columnas reales
+                        df['demanda_semanal'] = df[['Unidades Vendida Semana 1', 
+                                                   'Unidades Vendida Semana 2', 
+                                                   'Unidades Vendida Semana 3', 
+                                                   'Unidades Vendida Semana 4']].sum(axis=1) / 4.0
 
-                        numeric_cols = ['Stock Actual', 'Formato en Kg'] + [col for col in df.columns if "Semana" in str(col)]
-                        for col in numeric_cols:
-                            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-                        df['demanda_semanal'] = df[[col for col in df.columns if "Semana" in str(col)]].sum(axis=1) / 4.0
+                        df['Producto MP'] = df['Producto']
+                        df['Stock MP (kg)'] = df['Stock Actual']
+                        df['Kg Usados'] = df['demanda_semanal'] * df['Formato en Kg']
+                        df['Unidades a Envasar'] = df['demanda_semanal']
+                        df['Cobertura (semanas)'] = df['Stock Actual'] / df['demanda_semanal'].replace(0, 1)
 
-                        # GUARDAR EN GOOGLE SHEETS
+                        # Guardar el plan calculado
                         save_sheet("Plan_Envasado_Actual", df)
 
                         st.success("✅ ¡Plan generado y guardado permanentemente en Google Sheets!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"❌ Error al procesar: {str(e)}")
-                        st.info("Asegúrate de que el archivo tenga la pestaña 'Datos_Limpios' y las columnas correctas.")
+                        st.info("Verifica que el archivo tenga la pestaña 'Datos_Limpios'")
 
-# ===================== PROGRESO GENERAL DEL PLAN =====================
+# ===================== PROGRESO GENERAL =====================
 if not is_vendedor and not df_plan.empty:
     total_kg_plan = df_plan["Kg Usados"].sum()
     total_kg_real = 0
@@ -546,4 +503,4 @@ else:
         else:
             st.info("Aún no hay datos.")
 
-st.caption("Desarrollado para La Trilla con ❤️ • Datos en Google Sheets v1.2")
+st.caption("Desarrollado para La Trilla con ❤️ • Datos en Google Sheets v1.3")
