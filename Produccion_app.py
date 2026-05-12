@@ -1,11 +1,8 @@
 import streamlit as st
 import pandas as pd
-import json
-import io
-from pathlib import Path
+import numpy as np
 from datetime import datetime, date
 import copy
-import numpy as np
 
 st.set_page_config(page_title="La Trilla - Envasado", layout="wide", page_icon="🥜")
 
@@ -47,7 +44,7 @@ USUARIOS = {
 
 def login():
     if not st.session_state.logged_in:
-        st.title("🔐 La Trilla - Envasado")
+        st.title("🔐 Envasado")
         st.subheader("Iniciar Sesión")
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
@@ -67,12 +64,60 @@ def login():
 if not login():
     st.stop()
 
-# ===================== LOG DE MOVIMIENTOS (Google Sheets) =====================
-def cargar_movimientos():
-    return load_sheet("movimientos_log").to_dict('records')
+# ===================== PERMISOS =====================
+username = st.session_state.username
+is_admin = username in ["Joannahan", "Daniela", "Gonzalo"]
+is_vendedor = username == "vendedor"
+
+# ===================== SESSION STATE =====================
+if "vista_seleccionada" not in st.session_state:
+    st.session_state.vista_seleccionada = "Lista de Prioridad"
+if "busqueda_forzada" not in st.session_state:
+    st.session_state.busqueda_forzada = ""
+if "cajas_asignadas" not in st.session_state:
+    st.session_state.cajas_asignadas = {}
+if "progreso_anterior" not in st.session_state:
+    st.session_state.progreso_anterior = {}
+
+# ===================== BOX WAREHOUSE =====================
+df_boxes = load_sheet("box_warehouse")
+boxes_almacen = {}
+if df_boxes.empty or len(df_boxes) < 48:
+    data = []
+    for letra in "ABCDEFGHIJKL":
+        for num in range(1, 5):
+            caja = f"{letra}{num}"
+            boxes_almacen[caja] = {}
+            data.append({"caja": caja, "producto": "", "unidades": 0})
+    save_sheet("box_warehouse", pd.DataFrame(data))
+    st.rerun()
+else:
+    for _, row in df_boxes.iterrows():
+        caja = str(row["caja"])
+        prod = str(row.get("producto", ""))
+        uni = int(row.get("unidades", 0))
+        if prod.strip():
+            boxes_almacen.setdefault(caja, {})[prod] = uni
+
+# ===================== PROGRESO =====================
+progreso_actual = {}
+df_progreso = load_sheet("progreso_envasado")
+if not df_progreso.empty:
+    for _, row in df_progreso.iterrows():
+        key = str(row["key"])
+        progreso_actual[key] = {"unidades_real": int(row.get("unidades_real", 0)), "completado": bool(row.get("completado", False))}
+
+movimientos_log = load_sheet("movimientos_log").to_dict('records') if not load_sheet("movimientos_log").empty else []
+
+def guardar_boxes():
+    data = [{"caja": c, "producto": p, "unidades": u} for c, cont in boxes_almacen.items() for p, u in cont.items()]
+    save_sheet("box_warehouse", pd.DataFrame(data))
+
+def guardar_progreso():
+    data = [{"key": k, "unidades_real": v["unidades_real"], "completado": v["completado"]} for k, v in progreso_actual.items()]
+    save_sheet("progreso_envasado", pd.DataFrame(data))
 
 def guardar_movimiento(usuario, producto, movimientos, detalle_final):
-    movimientos_log = cargar_movimientos()
     ahora = datetime.now()
     registro = {
         "fecha": ahora.strftime("%Y-%m-%d"),
@@ -86,65 +131,13 @@ def guardar_movimiento(usuario, producto, movimientos, detalle_final):
     movimientos_log.append(registro)
     save_sheet("movimientos_log", pd.DataFrame(movimientos_log))
 
-# ===================== BOX WAREHOUSE =====================
-def cargar_boxes():
-    df = load_sheet("box_warehouse")
-    boxes = {}
-    for _, row in df.iterrows():
-        caja = str(row["caja"])
-        prod = str(row.get("producto", ""))
-        uni = int(row.get("unidades", 0))
-        if prod.strip():
-            boxes.setdefault(caja, {})[prod] = uni
-    if not boxes:
-        for letra in "ABCDEFGHIJKL":
-            for num in range(1, 5):
-                boxes[f"{letra}{num}"] = {}
-    return boxes
-
-def guardar_boxes(boxes):
-    data = []
-    for caja, contenido in boxes.items():
-        for producto, unidades in contenido.items():
-            data.append({"caja": caja, "producto": producto, "unidades": unidades})
-    save_sheet("box_warehouse", pd.DataFrame(data))
-
-boxes_almacen = cargar_boxes()
-
-# ===================== EL RESTO DE LA APP =====================
-st.markdown("""
-<style>
-    .stNumberInput input { inputmode: decimal !important; -webkit-appearance: none; -moz-appearance: textfield; }
-</style>
-""", unsafe_allow_html=True)
-
-if "vista_seleccionada" not in st.session_state:
-    st.session_state.vista_seleccionada = "Lista de Prioridad"
-if "busqueda_forzada" not in st.session_state:
-    st.session_state.busqueda_forzada = ""
-
-# ===================== CARGAR PLAN (Google Sheets) =====================
-df_plan = load_sheet("Plan_Envasado_Actual")
+# ===================== CARGAR PLAN =====================
+df_plan = load_sheet("Plan_Envasado_Actual") if not is_vendedor else pd.DataFrame()
 if not df_plan.empty:
-    numeric_cols = ['Stock MP (kg)', 'Kg Usados', 'Unidades a Envasar', 'Cobertura (semanas)', 'Stock Actual', 'Formato en Kg']
+    numeric_cols = ['Stock MP (kg)', 'Kg Usados', 'Unidades a Envasar', 'Cobertura (semanas)', 'Stock Actual', 'Formato en Kg', '% Stock Asignado']
     for col in numeric_cols:
         if col in df_plan.columns:
             df_plan[col] = pd.to_numeric(df_plan[col], errors='coerce').fillna(0)
-
-PROGRESO_FILE = "progreso_envasado"
-def cargar_progreso():
-    return load_sheet(PROGRESO_FILE).to_dict('records') if not load_sheet(PROGRESO_FILE).empty else {}
-
-def guardar_progreso(progreso):
-    save_sheet(PROGRESO_FILE, pd.DataFrame(progreso))
-
-progreso_actual = cargar_progreso()
-
-if "progreso_anterior" not in st.session_state:
-    st.session_state.progreso_anterior = copy.deepcopy(progreso_actual)
-
-if "cajas_asignadas" not in st.session_state:
-    st.session_state.cajas_asignadas = {}
 
 # ===================== BARRA LATERAL =====================
 st.sidebar.header("Filtros y Navegación")
@@ -161,113 +154,112 @@ if st.sidebar.button("🚪 Cerrar Sesión"):
     st.session_state.logged_in = False
     st.rerun()
 
-# ===================== GENERAR PLAN (TU LÓGICA ORIGINAL) =====================
+# ===================== GENERAR PLAN (TU LÓGICA ORIGINAL EXACTA) =====================
 if is_admin:
     with st.sidebar.expander("📤 Generar Plan de Envasado (Admin)"):
         st.caption("Sube ProductInputData.xlsx → genera plan completo")
         uploaded_file = st.file_uploader("📁 Selecciona ProductInputData.xlsx", type=["xlsx"], key="input_uploader")
-        if uploaded_file is not None:
-            if st.button("🚀 Procesar y Generar Plan de Envasado", type="primary", use_container_width=True):
-                with st.spinner("Analizando datos y generando el plan..."):
-                    try:
-                        df = pd.read_excel(uploaded_file, sheet_name="Datos_Limpios")
-                        df.columns = [str(col).strip() for col in df.columns]
-                        numeric_cols = ['Stock Actual', 'Formato en Kg'] + [col for col in df.columns if "Semana" in str(col)]
-                        for col in numeric_cols:
-                            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-                        df['demanda_semanal'] = df[[col for col in df.columns if "Semana" in str(col)]].sum(axis=1) / 4.0
-                        df_mp = df[(df['Grupo_ID'].notna()) & (df['Sub_ID'].astype(str).str.contains(r'\.0$|^\d+$', regex=True))].copy()
-                        df_env = df[(df['Grupo_ID'].notna()) & (~df['Sub_ID'].astype(str).str.contains(r'\.0$|^\d+$', regex=True))].copy()
-                        df_mp['Stock_kg'] = df_mp['Stock Actual'] * df_mp['Formato en Kg']
-                        resultados = []
-                        for grupo in sorted(df_mp['Grupo_ID'].unique()):
-                            mp_rows = df_mp[df_mp['Grupo_ID'] == grupo]
-                            stock_total_mp = float(mp_rows['Stock_kg'].sum())
-                            if not mp_rows.empty:
-                                mp_principal = mp_rows.loc[mp_rows['Stock_kg'].idxmax()]
-                                nombre_mp = str(mp_principal['Producto']).strip()
-                            else:
-                                continue
-                            if stock_total_mp <= 0.5: continue
-                            envs = df_env[(df_env['Grupo_ID'] == grupo) & (df_env['demanda_semanal'] > 0.1)].copy()
-                            if envs.empty: continue
-                            formatos = []
-                            total_demanda_kg = 0.0
-                            for _, row in envs.iterrows():
-                                peso = float(row['Formato en Kg'])
-                                if peso <= 0: continue
-                                demanda = float(row['demanda_semanal'])
-                                stock_actual = float(row['Stock Actual'])
-                                nombre_fmt = str(row['Formato']).strip()
-                                formatos.append({'formato': nombre_fmt, 'peso': peso, 'demanda': demanda, 'stock_actual': stock_actual})
-                                total_demanda_kg += demanda * peso
-                            if not formatos: continue
-                            cobertura_objetivo = stock_total_mp / total_demanda_kg
-                            distribucion = {}
-                            kg_usados = 0.0
-                            for fmt in formatos:
-                                stock_final_target = fmt['demanda'] * cobertura_objetivo
-                                unidades = max(0, int(np.ceil(stock_final_target - fmt['stock_actual'])))
+        if uploaded_file and st.button("🚀 Procesar y Generar Plan de Envasado", type="primary", use_container_width=True):
+            with st.spinner("Analizando datos y generando el plan..."):
+                try:
+                    df = pd.read_excel(uploaded_file, sheet_name="Datos_Limpios")
+                    df.columns = [str(col).strip() for col in df.columns]
+                    numeric_cols = ['Stock Actual', 'Formato en Kg'] + [col for col in df.columns if "Semana" in str(col)]
+                    for col in numeric_cols:
+                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                    df['demanda_semanal'] = df[[col for col in df.columns if "Semana" in str(col)]].sum(axis=1) / 4.0
+                    df_mp = df[(df['Grupo_ID'].notna()) & (df['Sub_ID'].astype(str).str.contains(r'\.0$|^\d+$', regex=True))].copy()
+                    df_env = df[(df['Grupo_ID'].notna()) & (~df['Sub_ID'].astype(str).str.contains(r'\.0$|^\d+$', regex=True))].copy()
+                    df_mp['Stock_kg'] = df_mp['Stock Actual'] * df_mp['Formato en Kg']
+                    resultados = []
+                    for grupo in sorted(df_mp['Grupo_ID'].unique()):
+                        mp_rows = df_mp[df_mp['Grupo_ID'] == grupo]
+                        stock_total_mp = float(mp_rows['Stock_kg'].sum())
+                        if not mp_rows.empty:
+                            mp_principal = mp_rows.loc[mp_rows['Stock_kg'].idxmax()]
+                            nombre_mp = str(mp_principal['Producto']).strip()
+                        else:
+                            continue
+                        if stock_total_mp <= 0.5: continue
+                        envs = df_env[(df_env['Grupo_ID'] == grupo) & (df_env['demanda_semanal'] > 0.1)].copy()
+                        if envs.empty: continue
+                        formatos = []
+                        total_demanda_kg = 0.0
+                        for _, row in envs.iterrows():
+                            peso = float(row['Formato en Kg'])
+                            if peso <= 0: continue
+                            demanda = float(row['demanda_semanal'])
+                            stock_actual = float(row['Stock Actual'])
+                            nombre_fmt = str(row['Formato']).strip()
+                            formatos.append({'formato': nombre_fmt, 'peso': peso, 'demanda': demanda, 'stock_actual': stock_actual})
+                            total_demanda_kg += demanda * peso
+                        if not formatos: continue
+                        cobertura_objetivo = stock_total_mp / total_demanda_kg
+                        distribucion = {}
+                        kg_usados = 0.0
+                        for fmt in formatos:
+                            stock_final_target = fmt['demanda'] * cobertura_objetivo
+                            unidades = max(0, int(np.ceil(stock_final_target - fmt['stock_actual'])))
+                            kg_necesario = unidades * fmt['peso']
+                            if kg_usados + kg_necesario > stock_total_mp:
+                                unidades = int((stock_total_mp - kg_usados) / fmt['peso'])
                                 kg_necesario = unidades * fmt['peso']
-                                if kg_usados + kg_necesario > stock_total_mp:
-                                    unidades = int((stock_total_mp - kg_usados) / fmt['peso'])
-                                    kg_necesario = unidades * fmt['peso']
-                                stock_final = fmt['stock_actual'] + unidades
-                                cobertura = round(stock_final / fmt['demanda'], 2)
-                                distribucion[fmt['formato']] = {
-                                    'stock_actual': int(fmt['stock_actual']),
-                                    'unidades_envasar': unidades,
-                                    'kg_usados': round(kg_necesario, 2),
-                                    'stock_final': int(stock_final),
-                                    'cobertura_semanas': cobertura,
-                                    'peso': fmt['peso']
-                                }
-                                kg_usados += kg_necesario
-                            kg_sobrante = stock_total_mp - kg_usados
-                            if kg_sobrante > 0.5:
-                                small_first = sorted(formatos, key=lambda x: x['peso'])
-                                for fmt in small_first:
-                                    extra = int(kg_sobrante / fmt['peso'])
-                                    if extra > 0:
-                                        key = fmt['formato']
-                                        distribucion[key]['unidades_envasar'] += extra
-                                        distribucion[key]['kg_usados'] += round(extra * fmt['peso'], 2)
-                                        distribucion[key]['stock_final'] += extra
-                                        distribucion[key]['cobertura_semanas'] = round(distribucion[key]['stock_final'] / fmt['demanda'], 2)
-                                        kg_sobrante -= extra * fmt['peso']
-                                    if kg_sobrante < fmt['peso']: break
-                            utilizacion = round((stock_total_mp - kg_sobrante) / stock_total_mp * 100, 1)
-                            resultados.append({
-                                'producto': nombre_mp,
-                                'stock_mp_kg': round(stock_total_mp, 2),
-                                'distribucion': distribucion,
-                                'kg_sobrante': round(kg_sobrante, 2),
-                                'utilizacion_%': utilizacion,
-                                'cobertura_objetivo': round(cobertura_objetivo, 2)
+                            stock_final = fmt['stock_actual'] + unidades
+                            cobertura = round(stock_final / fmt['demanda'], 2)
+                            distribucion[fmt['formato']] = {
+                                'stock_actual': int(fmt['stock_actual']),
+                                'unidades_envasar': unidades,
+                                'kg_usados': round(kg_necesario, 2),
+                                'stock_final': int(stock_final),
+                                'cobertura_semanas': cobertura,
+                                'peso': fmt['peso']
+                            }
+                            kg_usados += kg_necesario
+                        kg_sobrante = stock_total_mp - kg_usados
+                        if kg_sobrante > 0.5:
+                            small_first = sorted(formatos, key=lambda x: x['peso'])
+                            for fmt in small_first:
+                                extra = int(kg_sobrante / fmt['peso'])
+                                if extra > 0:
+                                    key = fmt['formato']
+                                    distribucion[key]['unidades_envasar'] += extra
+                                    distribucion[key]['kg_usados'] += round(extra * fmt['peso'], 2)
+                                    distribucion[key]['stock_final'] += extra
+                                    distribucion[key]['cobertura_semanas'] = round(distribucion[key]['stock_final'] / fmt['demanda'], 2)
+                                    kg_sobrante -= extra * fmt['peso']
+                                if kg_sobrante < fmt['peso']: break
+                        utilizacion = round((stock_total_mp - kg_sobrante) / stock_total_mp * 100, 1)
+                        resultados.append({
+                            'producto': nombre_mp,
+                            'stock_mp_kg': round(stock_total_mp, 2),
+                            'distribucion': distribucion,
+                            'kg_sobrante': round(kg_sobrante, 2),
+                            'utilizacion_%': utilizacion,
+                            'cobertura_objetivo': round(cobertura_objetivo, 2)
+                        })
+                    filas = []
+                    for r in resultados:
+                        distrib_items = sorted(r['distribucion'].items(), key=lambda x: x[1]['peso'])
+                        for fmt_name, d in distrib_items:
+                            porcentaje = round((d['kg_usados'] / r['stock_mp_kg'] * 100), 1) if r['stock_mp_kg'] > 0 else 0
+                            filas.append({
+                                'Producto MP': r['producto'],
+                                'Stock MP (kg)': r['stock_mp_kg'],
+                                'Formato': fmt_name,
+                                'Stock Actual': d['stock_actual'],
+                                'Unidades a Envasar': d['unidades_envasar'],
+                                'Kg Usados': d['kg_usados'],
+                                '% Stock Asignado': porcentaje,
+                                'Stock Final': d['stock_final'],
+                                'Cobertura (semanas)': d['cobertura_semanas']
                             })
-                        filas = []
-                        for r in resultados:
-                            distrib_items = sorted(r['distribucion'].items(), key=lambda x: x[1]['peso'])
-                            for fmt_name, d in distrib_items:
-                                porcentaje = round((d['kg_usados'] / r['stock_mp_kg'] * 100), 1) if r['stock_mp_kg'] > 0 else 0
-                                filas.append({
-                                    'Producto MP': r['producto'],
-                                    'Stock MP (kg)': r['stock_mp_kg'],
-                                    'Formato': fmt_name,
-                                    'Stock Actual': d['stock_actual'],
-                                    'Unidades a Envasar': d['unidades_envasar'],
-                                    'Kg Usados': d['kg_usados'],
-                                    '% Stock Asignado': porcentaje,
-                                    'Stock Final': d['stock_final'],
-                                    'Cobertura (semanas)': d['cobertura_semanas']
-                                })
-                        df_final = pd.DataFrame(filas)
-                        save_sheet("Plan_Envasado_Actual", df_final)
-                        st.success("✅ ¡Plan generado correctamente y guardado en Google Sheets!")
-                        st.dataframe(df_final, use_container_width=True)
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ Error al procesar: {str(e)}")
+                    df_final = pd.DataFrame(filas)
+                    save_sheet("Plan_Envasado_Actual", df_final)
+                    st.success("✅ ¡Plan generado correctamente y guardado en Google Sheets!")
+                    st.dataframe(df_final, use_container_width=True)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Error al procesar: {str(e)}")
 
 # ===================== PROGRESO GENERAL DEL PLAN =====================
 total_kg_plan = df_plan["Kg Usados"].sum() if not df_plan.empty else 0
@@ -498,7 +490,7 @@ elif vista == "BOX warehouse":
                 st.success("✅ Cambios guardados")
                 st.rerun()
 
-else:  # Gráfico Diario
+elif vista == "Gráfico Diario":
     st.subheader("📈 Progreso Diario de Producción")
     if movimientos_log:
         df_hist = pd.DataFrame(movimientos_log)
