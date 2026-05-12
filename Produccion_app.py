@@ -158,6 +158,12 @@ st.markdown("""
 # ===================== CARGAR PLAN =====================
 if not is_vendedor:
     df_plan = load_sheet("Plan_Envasado_Actual")
+    # === CORRECCIÓN IMPORTANTE: convertir columnas numéricas ===
+    if not df_plan.empty:
+        numeric_cols = ['Stock MP (kg)', 'Kg Usados', 'Unidades a Envasar', 'Cobertura (semanas)', 'Stock Actual', 'Formato en Kg']
+        for col in numeric_cols:
+            if col in df_plan.columns:
+                df_plan[col] = pd.to_numeric(df_plan[col], errors='coerce').fillna(0)
 else:
     df_plan = pd.DataFrame()
 
@@ -183,7 +189,7 @@ if st.sidebar.button("🚪 Cerrar Sesión"):
     st.session_state.username = ""
     st.rerun()
 
-# ===================== GENERAR PLAN DE ENVASADO (CORREGIDO) =====================
+# ===================== GENERAR PLAN =====================
 if is_admin:
     with st.sidebar.expander("📤 Generar Plan de Envasado (Admin)"):
         st.caption("Sube ProductInputData.xlsx → genera y guarda el plan")
@@ -195,7 +201,6 @@ if is_admin:
                         df = pd.read_excel(uploaded_file, sheet_name="Datos_Limpios")
                         df.columns = [str(col).strip() for col in df.columns]
 
-                        # Cálculos con las columnas reales de tu archivo
                         df['demanda_semanal'] = df[['Unidades Vendida Semana 1',
                                                    'Unidades Vendida Semana 2',
                                                    'Unidades Vendida Semana 3',
@@ -214,7 +219,7 @@ if is_admin:
                     except Exception as e:
                         st.error(f"❌ Error al procesar: {str(e)}")
 
-# ===================== PROGRESO GENERAL DEL PLAN =====================
+# ===================== PROGRESO GENERAL =====================
 if not is_vendedor and not df_plan.empty:
     total_kg_plan = df_plan["Kg Usados"].sum()
     total_kg_real = 0
