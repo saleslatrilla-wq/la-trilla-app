@@ -14,16 +14,21 @@ spreadsheet = st.session_state.google_spreadsheet
 def load_sheet(sheet_name):
     try:
         worksheet = spreadsheet.worksheet(sheet_name)
-        data = worksheet.get_all_records()
-        df = pd.DataFrame(data)
+        data = worksheet.get_all_values()
+        if not data or len(data) < 2:
+            return pd.DataFrame()
+        headers = data[0]
+        rows = data[1:]
+        df = pd.DataFrame(rows, columns=headers)
         numeric_cols = ['Stock MP (kg)', 'Stock Actual', 'Unidades a Envasar', 'Kg Usados', 
                         'Stock Final', 'Cobertura (semanas)', 'Formato en Kg', 'demanda_semanal']
         for col in numeric_cols:
             if col in df.columns:
-                df[col] = df[col].apply(lambda x: str(x).replace(',', '.') if isinstance(x, str) else x)
+                df[col] = df[col].apply(lambda x: str(x).replace('.', '').replace(',', '.') if isinstance(x, str) else x)
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         return df
-    except:
+    except Exception as e:
+        st.error(f"Error cargando hoja {sheet_name}: {e}")
         return pd.DataFrame()
 
 def save_sheet(sheet_name, df):
