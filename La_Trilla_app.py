@@ -17,12 +17,12 @@ def get_google_client():
     import gspread
     from google.oauth2.service_account import Credentials
     creds = Credentials.from_service_account_info(
-    st.secrets["google_service_account"],
-    scopes=[
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
-)
+        st.secrets["google_service_account"],
+        scopes=[
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+    )
     return gspread.authorize(creds)
 
 @st.cache_resource
