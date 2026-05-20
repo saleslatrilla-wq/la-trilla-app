@@ -33,7 +33,7 @@ def save_sheet(sheet_name, df):
         worksheet.update([[]])
 
 # ==================== CARPETAS PARA ETIQUETAS (se mantienen en google drive) ====================
-ETIQUETAS_FOLDER_ID = "1T8T3Lt3VyckBwPWkZISpjR_KgYo1aJR7?usp=drive_link"
+ETIQUETAS_FOLDER_ID = "1T8T3Lt3VyckBwPWkZISpjR_KgYo1aJR7"
 
 def buscar_etiqueta_base(nombre_producto):
     try:
@@ -131,25 +131,50 @@ def cargar_historial_lote(lote):
     return data
 
 # ==================== ETIQUETAS ====================
-def buscar_etiqueta_base(nombre_producto):
-    archivo_exacto = ETIQUETAS_BASE_DIR / f"{nombre_producto}.ezpx"
-    if archivo_exacto.exists():
-        return archivo_exacto
-    for archivo in ETIQUETAS_BASE_DIR.glob("*.ezpx"):
-        if nombre_producto.lower() in archivo.stem.lower():
-            return archivo
-    return None
+ETIQUETAS_FOLDER_ID = "1T8T3Lt3VyckBwPWkZISpjR_KgYo1aJR7"
 
-def modificar_etiqueta_ezpx(ruta_original, lote_nuevo, precio_bruto, precio_kg, fecha_prod, fecha_venc, origen):
+def buscar_etiqueta_base(nombre_producto):
     try:
-        tree = ET.parse(ruta_original)
+        gc = st.session_state.google_spreadsheet.client
+        drive_client = gc.auth
+        from googleapiclient.discovery import build
+        service = build('drive', 'v3', credentials=drive_client)
+        query = f"'{ETIQUETAS_FOLDER_ID}' in parents and name contains '{nombre_producto}' and trashed=false"
+        resultados = service.files().list(q=query, fields="files(id, name)").execute()
+        archivos = resultados.get("files", [])
+        return archivos[0] if archivos else None
+    except Exception as e:
+        st.error(f"Error buscando etiqueta en Drive: {e}")
+        return None
+
+def descargar_etiqueta_drive(file_id):
+    try:
+        gc = st.session_state.google_spreadsheet.client
+        drive_client = gc.auth
+        from googleapiclient.discovery import build
+        from googleapiclient.http import MediaIoBaseDownload
+        service = build('drive', 'v3', credentials=drive_client)
+        request = service.files().get_media(fileId=file_id)
+        buf = BytesIO()
+        downloader = MediaIoBaseDownload(buf, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        buf.seek(0)
+        return buf
+    except Exception as e:
+        st.error(f"Error descargando etiqueta: {e}")
+        return None
+
+def modificar_etiqueta_ezpx(archivo_buf, lote_nuevo, precio_bruto, precio_kg, fecha_prod, fecha_venc, origen):
+    try:
+        tree = ET.parse(archivo_buf)
         root = tree.getroot()
         for elem in root.iter("GraphicShape"):
             data = elem.find("Data")
             if data is None or data.text is None:
                 continue
             txt = (data.text or "").strip()
-
             if txt == "09ABL604":
                 data.text = lote_nuevo
             elif txt == "$1.400":
@@ -162,7 +187,6 @@ def modificar_etiqueta_ezpx(ruta_original, lote_nuevo, precio_bruto, precio_kg, 
                 data.text = fecha_prod
             elif txt == "02/2028":
                 data.text = fecha_venc
-
         buf = BytesIO()
         tree.write(buf, encoding="utf-8", xml_declaration=True)
         buf.seek(0)
@@ -262,12 +286,12 @@ with tab2:
                 st.info(f"**Producto seleccionado:** {producto}")
                 
                 if st.button("🔍 Cargar Etiqueta Base", type="primary"):
-                    ruta_base = buscar_etiqueta_base(producto)
-                    if ruta_base:
-                        st.session_state.ruta_base = ruta_base
-                        st.success(f"✅ Etiqueta base encontrada: {ruta_base.name}")
+                    archivo = buscar_etiqueta_base(producto)
+                    if archivo:
+                        st.session_state.ruta_base = archivo  # ahora es dict con 'id' y 'name'
+                        st.success(f"✅ Etiqueta base encontrada: {archivo['name']}")
                     else:
-                        st.error(f"❌ No se encontró {producto}.ezpx en Etiquetas_base")
+                        st.error(f"❌ No se encontró etiqueta para {producto} en Google Drive")
                 
                 if "ruta_base" in st.session_state:
                     st.subheader("📋 Datos para la etiqueta")
@@ -281,15 +305,17 @@ with tab2:
                     disabled = (origen == "Seleccione un país..." or fecha_prod is None or fecha_venc is None)
                     
                     if st.button("🚀 Confirmar y Descargar", type="primary", disabled=disabled):
-                        bytes_etiqueta = modificar_etiqueta_ezpx(
-                            st.session_state.ruta_base,
-                            data['lote'],
-                            precio_bruto,
-                            precio_kg,
-                            fecha_prod.strftime("%m/%Y"),
-                            fecha_venc.strftime("%m/%Y"),
-                            origen
-                        )
+                        archivo_buf = descargar_etiqueta_drive(st.session_state.ruta_base['id'])
+                        if archivo_buf:
+                            bytes_etiqueta = modificar_etiqueta_ezpx(
+                                archivo_buf,
+                                data['lote'],
+                                precio_bruto,
+                                precio_kg,
+                                fecha_prod.strftime("%m/%Y"),
+                                fecha_venc.strftime("%m/%Y"),
+                                origen
+                            )
                         if bytes_etiqueta:
                             st.session_state.etiqueta_bytes = bytes_etiqueta
                             st.success("✅ Etiqueta generada correctamente")
