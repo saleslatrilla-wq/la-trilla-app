@@ -32,9 +32,21 @@ def save_sheet(sheet_name, df):
     else:
         worksheet.update([[]])
 
-# ==================== CARPETAS PARA ETIQUETAS (se mantienen locales) ====================
-ETIQUETAS_BASE_DIR = Path("Etiquetas_base")
-ETIQUETAS_BASE_DIR.mkdir(parents=True, exist_ok=True)
+# ==================== CARPETAS PARA ETIQUETAS (se mantienen en google drive) ====================
+ETIQUETAS_FOLDER_ID = https://drive.google.com/drive/folders/1T8T3Lt3VyckBwPWkZISpjR_KgYo1aJR7?usp=drive_link
+
+def buscar_etiqueta_base(nombre_producto):
+    try:
+        drive = st.session_state.google_drive  # el cliente de Drive que ya tienes conectado
+        query = f"'{ETIQUETAS_FOLDER_ID}' in parents and name contains '{nombre_producto}' and trashed=false"
+        resultados = drive.files().list(q=query, fields="files(id, name)").execute()
+        archivos = resultados.get("files", [])
+        if not archivos:
+            return None
+        return archivos[0]  # retorna dict con 'id' y 'name'
+    except Exception as e:
+        st.error(f"Error buscando etiqueta: {e}")
+        return None
 
 # ==================== FORMATO FECHA CHILENA ====================
 def format_fecha_chilena(fecha):
