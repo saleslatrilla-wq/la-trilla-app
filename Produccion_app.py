@@ -100,25 +100,36 @@ def guardar_movimiento(usuario, producto, movimientos, detalle_final):
 def cargar_boxes():
     df = load_sheet("box_warehouse")
     boxes = {}
-    if df.empty:
-        for letra in "ABCDEFGHIJKL":
-            for num in range(1, 5):
-                boxes[f"{letra}{num}"] = {}
+    # Inicializar todas las cajas vacías por defecto
+    for letra in "ABCDEFGHIJKL":
+        for num in range(1, 5):
+            boxes[f"{letra}{num}"] = {}
+    if df.empty or "caja" not in df.columns:
         return boxes
     for _, row in df.iterrows():
-        caja = row["caja"]
-        contenido = json.loads(row["contenido"]) if isinstance(row["contenido"], str) else row["contenido"]
-        boxes[caja] = contenido
+        caja = str(row.get("caja", "")).strip()
+        producto = str(row.get("producto", "")).strip()
+        unidades = row.get("unidades", 0)
+        if caja and producto:
+            if caja not in boxes:
+                boxes[caja] = {}
+            try:
+                boxes[caja][producto] = int(unidades)
+            except (ValueError, TypeError):
+                boxes[caja][producto] = 0
     return boxes
 
 def guardar_boxes(boxes):
     rows = []
     for caja, contenido in boxes.items():
-        rows.append({"caja": caja, "contenido": json.dumps(contenido)})
+        if contenido:
+            for producto, unidades in contenido.items():
+                rows.append({"caja": caja, "producto": producto, "unidades": unidades})
+        else:
+            # Guardar la caja vacía igual para que no desaparezca
+            rows.append({"caja": caja, "producto": "", "unidades": 0})
     df = pd.DataFrame(rows)
     save_sheet("box_warehouse", df)
-
-boxes_almacen = cargar_boxes()
 
 # ==================== PROGRESO Y HISTORIAL (Google Sheets) ====================
 PROGRESO_SHEET = "progreso_envasado"
