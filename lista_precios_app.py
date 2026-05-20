@@ -33,7 +33,7 @@ def save_sheet(sheet_name, df):
         worksheet.update([[]])
 
 # ==================== CARPETAS PARA ETIQUETAS (se mantienen en google drive) ====================
-ETIQUETAS_FOLDER_ID = https://drive.google.com/drive/folders/1T8T3Lt3VyckBwPWkZISpjR_KgYo1aJR7?usp=drive_link
+ETIQUETAS_FOLDER_ID = "1T8T3Lt3VyckBwPWkZISpjR_KgYo1aJR7?usp=drive_link"
 
 def buscar_etiqueta_base(nombre_producto):
     try:
