@@ -16,11 +16,11 @@ def load_sheet(sheet_name):
         worksheet = spreadsheet.worksheet(sheet_name)
         data = worksheet.get_all_records()
         df = pd.DataFrame(data)
-        # Convertir columnas numéricas para evitar errores str/int
         numeric_cols = ['Stock MP (kg)', 'Stock Actual', 'Unidades a Envasar', 'Kg Usados', 
                         'Stock Final', 'Cobertura (semanas)', 'Formato en Kg', 'demanda_semanal']
         for col in numeric_cols:
             if col in df.columns:
+                df[col] = df[col].apply(lambda x: str(x).replace(',', '.') if isinstance(x, str) else x)
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         return df
     except:
