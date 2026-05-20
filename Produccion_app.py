@@ -130,7 +130,7 @@ def guardar_boxes(boxes):
             rows.append({"caja": caja, "producto": "", "unidades": 0})
     df = pd.DataFrame(rows)
     save_sheet("box_warehouse", df)
-
+boxes_almacen = cargar_boxes()
 # ==================== PROGRESO Y HISTORIAL (Google Sheets) ====================
 PROGRESO_SHEET = "progreso_envasado"
 HISTORIAL_SHEET = "historial_produccion"
