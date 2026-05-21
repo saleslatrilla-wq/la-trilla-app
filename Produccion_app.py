@@ -6,6 +6,7 @@ from datetime import datetime, date
 import copy
 import numpy as np
 
+st.set_page_config(page_title="La Trilla - Envasado", layout="wide", page_icon="🥜")
 
 # ===================== CONEXIÓN A GOOGLE SHEETS =====================
 spreadsheet = st.session_state.google_spreadsheet
@@ -59,8 +60,8 @@ is_vendedor = st.session_state.get("username") == "vendedor"
 
 def login():
     if not st.session_state.logged_in:
-        st.markdown("<h1 style='font-family:Playfair Display,serif;color:#f0e6d0;'>🏭 Producción / Envasado</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='color:#a89880;letter-spacing:0.1em;font-size:0.85rem;text-transform:uppercase;'>Iniciar Sesión</p>", unsafe_allow_html=True)
+        st.title("🔐 La Trilla - Envasado")
+        st.subheader("Iniciar Sesión")
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             username = st.text_input("Usuario", placeholder="Ingresa tu usuario")
@@ -482,7 +483,7 @@ if vista == "Dashboard":
     guardar_progreso(progreso_actual)
 
 elif vista == "Lista de Prioridad":
-    st.markdown("<h2 style='font-family:Playfair Display,serif;color:#f0e6d0;'>📋 Lista de Prioridad</h2><p style='color:#5a5040;font-size:0.78rem;letter-spacing:0.1em;'>Qué envasar primero según cobertura de stock</p>", unsafe_allow_html=True)
+    st.subheader("📋 Lista de Prioridad (qué envasar primero)")
     if df_plan.empty:
         st.info("No hay plan cargado. Usa el generador en la barra lateral.")
     else:
@@ -533,7 +534,7 @@ elif vista == "Lista de Prioridad":
                     st.rerun()
 
 elif vista == "BOX warehouse":
-    st.markdown("<h2 style='font-family:Playfair Display,serif;color:#f0e6d0;'>📦 BOX Warehouse</h2>", unsafe_allow_html=True)
+    st.subheader("📦 BOX Warehouse")
     tab_ver, tab_modificar = st.tabs(["📋 Ver Contenido", "✏️ Modificar Cajas"])
     with tab_ver:
         busqueda_box = st.text_input("🔎 Buscar producto", placeholder="Nombre del producto...", key="busqueda_box")
@@ -579,7 +580,7 @@ elif vista == "BOX warehouse":
                 st.rerun()
 
 else:  # Gráfico Diario
-    st.markdown("<h2 style='font-family:Playfair Display,serif;color:#f0e6d0;'>📈 Progreso Diario de Producción</h2>", unsafe_allow_html=True)
+    st.subheader("📈 Progreso Diario de Producción")
     if historial:
         df_hist = pd.DataFrame(list(historial.items()), columns=["Fecha", "Unidades Envasadas"])
         df_hist["Fecha"] = pd.to_datetime(df_hist["Fecha"])
@@ -588,4 +589,4 @@ else:  # Gráfico Diario
     else:
         st.info("Aún no hay datos.")
 
-st.markdown("<div style='text-align:center;color:#3a3028;font-size:0.7rem;margin-top:2rem;font-family:DM Sans,sans-serif;letter-spacing:0.08em;'>Desarrollado para La Trilla · Versión Google Sheets 1.6</div>", unsafe_allow_html=True)
+st.caption("Desarrollado con ❤️ para La Trilla • Versión Google Sheets 1.6 - Lógica 100% original del código de 602 líneas")
