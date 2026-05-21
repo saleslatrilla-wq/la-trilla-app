@@ -11,7 +11,7 @@ st.set_page_config(
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-/* ── RESET & BASE ── */
+
 *, *::before, *::after { box-sizing: border-box; }
 
 html, body, [data-testid="stAppViewContainer"] {
@@ -20,7 +20,6 @@ html, body, [data-testid="stAppViewContainer"] {
     font-family: 'DM Sans', sans-serif !important;
 }
 
-/* ── FONDO PRINCIPAL ── */
 [data-testid="stAppViewContainer"] > .main {
     background: linear-gradient(160deg, #0f0e0c 0%, #1a1714 60%, #0f0e0c 100%) !important;
 }
@@ -28,7 +27,6 @@ html, body, [data-testid="stAppViewContainer"] {
     background: transparent !important;
 }
 
-/* ── SIDEBAR ── */
 [data-testid="stSidebar"] {
     background: linear-gradient(180deg, #141210 0%, #1c1916 100%) !important;
     border-right: 1px solid #2e2820 !important;
@@ -53,7 +51,6 @@ html, body, [data-testid="stAppViewContainer"] {
     font-size: 0.72rem !important;
 }
 
-/* ── SELECTBOX SIDEBAR ── */
 [data-testid="stSidebar"] [data-baseweb="select"] > div {
     background: #1f1c18 !important;
     border: 1px solid #3a3028 !important;
@@ -64,7 +61,6 @@ html, body, [data-testid="stAppViewContainer"] {
     border-color: #c8a84b !important;
 }
 
-/* ── TÍTULOS ── */
 h1, h2, h3 {
     font-family: 'Playfair Display', serif !important;
     color: #f0e6d0 !important;
@@ -80,7 +76,6 @@ h1 {
 h2 { font-size: 1.5rem !important; font-weight: 600 !important; }
 h3 { font-size: 1.15rem !important; }
 
-/* ── MÉTRICAS ── */
 [data-testid="metric-container"] {
     background: #1a1714 !important;
     border: 1px solid #2e2820 !important;
@@ -99,7 +94,6 @@ h3 { font-size: 1.15rem !important; }
     text-transform: uppercase !important;
 }
 
-/* ── BOTONES PRIMARIOS ── */
 .stButton > button[kind="primary"] {
     background: linear-gradient(135deg, #c8a84b 0%, #a8882b 100%) !important;
     color: #0f0e0c !important;
@@ -119,7 +113,6 @@ h3 { font-size: 1.15rem !important; }
     transform: translateY(-1px) !important;
 }
 
-/* ── BOTONES SECUNDARIOS ── */
 .stButton > button:not([kind="primary"]) {
     background: transparent !important;
     border: 1px solid #3a3028 !important;
@@ -133,7 +126,6 @@ h3 { font-size: 1.15rem !important; }
     color: #c8a84b !important;
 }
 
-/* ── INPUTS / TEXT ── */
 .stTextInput > div > div > input,
 .stTextInput > div > div > input[type="password"] {
     background: #1a1714 !important;
@@ -155,7 +147,6 @@ h3 { font-size: 1.15rem !important; }
     text-transform: uppercase !important;
 }
 
-/* ── NUMBER INPUT ── */
 .stNumberInput > div > div > input {
     background: #1a1714 !important;
     border: 1px solid #3a3028 !important;
@@ -163,7 +154,6 @@ h3 { font-size: 1.15rem !important; }
     color: #e8e0d0 !important;
 }
 
-/* ── DATE INPUT ── */
 .stDateInput > div > div > input {
     background: #1a1714 !important;
     border: 1px solid #3a3028 !important;
@@ -171,7 +161,6 @@ h3 { font-size: 1.15rem !important; }
     color: #e8e0d0 !important;
 }
 
-/* ── SELECTBOX GENERAL ── */
 [data-baseweb="select"] > div {
     background: #1a1714 !important;
     border: 1px solid #3a3028 !important;
@@ -192,7 +181,6 @@ h3 { font-size: 1.15rem !important; }
     background: #2a2520 !important;
 }
 
-/* ── TABS ── */
 [data-baseweb="tab-list"] {
     background: #141210 !important;
     border-radius: 10px !important;
@@ -218,7 +206,6 @@ h3 { font-size: 1.15rem !important; }
 }
 [data-baseweb="tab-highlight"] { display: none !important; }
 
-/* ── DATAFRAME ── */
 [data-testid="stDataFrame"] {
     border-radius: 12px !important;
     overflow: hidden !important;
@@ -228,7 +215,6 @@ h3 { font-size: 1.15rem !important; }
     background: #141210 !important;
 }
 
-/* ── ALERTAS ── */
 [data-testid="stAlert"] {
     border-radius: 10px !important;
     border-left-width: 4px !important;
@@ -259,7 +245,6 @@ div[data-baseweb="notification"][kind="warning"],
     color: #f0c060 !important;
 }
 
-/* ── FILE UPLOADER ── */
 [data-testid="stFileUploader"] {
     background: #1a1714 !important;
     border: 2px dashed #3a3028 !important;
@@ -273,7 +258,6 @@ div[data-baseweb="notification"][kind="warning"],
     color: #a89880 !important;
 }
 
-/* ── EXPANDER ── */
 [data-testid="stExpander"] {
     background: #1a1714 !important;
     border: 1px solid #2e2820 !important;
@@ -284,14 +268,12 @@ div[data-baseweb="notification"][kind="warning"],
     font-family: 'DM Sans', sans-serif !important;
 }
 
-/* ── CONTAINER CON BORDE ── */
 [data-testid="stVerticalBlockBorderWrapper"] {
     background: #1a1714 !important;
     border: 1px solid #2e2820 !important;
     border-radius: 12px !important;
 }
 
-/* ── PROGRESS BAR ── */
 [data-testid="stProgressBar"] > div {
     background: #2e2820 !important;
     border-radius: 99px !important;
@@ -301,7 +283,6 @@ div[data-baseweb="notification"][kind="warning"],
     border-radius: 99px !important;
 }
 
-/* ── CHECKBOX ── */
 [data-baseweb="checkbox"] span {
     border-color: #3a3028 !important;
     background: #1a1714 !important;
@@ -311,24 +292,20 @@ div[data-baseweb="notification"][kind="warning"],
     border-color: #c8a84b !important;
 }
 
-/* ── SCROLLBAR ── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #141210; }
 ::-webkit-scrollbar-thumb { background: #3a3028; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #c8a84b; }
 
-/* ── CAPTION ── */
 .stCaption {
     color: #5a5040 !important;
     font-size: 0.75rem !important;
 }
 
-/* ── DIVIDER ── */
 hr {
     border-color: #2e2820 !important;
 }
 
-/* ── DOWNLOAD BUTTON ── */
 [data-testid="stDownloadButton"] > button {
     background: #1a1714 !important;
     border: 1px solid #c8a84b !important;
@@ -343,7 +320,6 @@ hr {
     color: #0f0e0c !important;
 }
 
-/* ── SPINNER ── */
 [data-testid="stSpinner"] {
     color: #c8a84b !important;
 }
