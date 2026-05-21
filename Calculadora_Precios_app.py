@@ -4,8 +4,16 @@ from io import BytesIO
 import re
 import math
 
-st.set_page_config(page_title="Precios App", layout="wide", initial_sidebar_state="collapsed")
-st.title("📊 Automatizador de Precios")
+st.markdown("""
+<div style='display:flex;align-items:center;gap:0.8rem;margin-bottom:0.5rem;'>
+<span style='font-size:1.8rem;'>📊</span>
+<div>
+<h1 style='margin:0;font-family:Playfair Display,serif;color:#f0e6d0;font-size:2rem;'>Calculadora de Precios</h1>
+<p style='margin:0;color:#5a5040;font-size:0.75rem;letter-spacing:0.15em;text-transform:uppercase;font-family:DM Sans,sans-serif;'>Automatización de precios de venta</p>
+</div>
+</div>
+<hr style='border-color:#2e2820;margin-bottom:1.5rem;'>
+""", unsafe_allow_html=True)
 
 # ===================== CONEXIÓN A GOOGLE SHEETS =====================
 spreadsheet = st.session_state.google_spreadsheet
@@ -57,7 +65,7 @@ tab1, tab2, tab3 = st.tabs(["📥 Recepción", "⚙️ Configuración", "💰 Pr
 
 # ==================================== PESTAÑA 1: RECEPCIÓN ====================================
 with tab1:
-    st.subheader("Datos de Recepción")
+    st.markdown("<h3 style='font-family:Playfair Display,serif;color:#c8a84b;'>Datos de Recepción</h3>", unsafe_allow_html=True)
     if "reception_df" not in st.session_state:
         df_saved, meta_saved = load_reception()
         if df_saved is not None:
@@ -741,4 +749,4 @@ with tab3:
                            file_name="Precios_de_Venta.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-st.caption("Desarrollado para La Trilla con ❤️ • Datos en Google Sheets v1.0")
+st.markdown("<div style='text-align:center;color:#3a3028;font-size:0.7rem;margin-top:2rem;font-family:DM Sans,sans-serif;letter-spacing:0.08em;'>Desarrollado para La Trilla · Datos en Google Sheets v1.0</div>", unsafe_allow_html=True)

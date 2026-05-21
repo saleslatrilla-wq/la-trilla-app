@@ -5,7 +5,6 @@ from datetime import datetime
 import xml.etree.ElementTree as ET
 from io import BytesIO
 
-st.set_page_config(page_title="La Trilla - Lista de Precios", layout="wide", page_icon="📋")
 
 # ===================== CONEXIÓN A GOOGLE SHEETS =====================
 spreadsheet = st.session_state.google_spreadsheet
@@ -179,13 +178,22 @@ def modificar_etiqueta_ezpx(archivo_buf, lote_nuevo, precio_bruto, precio_kg, fe
         return None
 
 # ==================== APP ====================
-st.title("📋 Lista de Precios")
+st.markdown("""
+<div style='display:flex;align-items:center;gap:0.8rem;margin-bottom:0.5rem;'>
+<span style='font-size:1.8rem;'>📋</span>
+<div>
+<h1 style='margin:0;font-family:Playfair Display,serif;color:#f0e6d0;font-size:2rem;'>Lista de Precios</h1>
+<p style='margin:0;color:#5a5040;font-size:0.75rem;letter-spacing:0.15em;text-transform:uppercase;font-family:DM Sans,sans-serif;'>Gestión de Lotes &amp; Etiquetas</p>
+</div>
+</div>
+<hr style='border-color:#2e2820;margin-bottom:1.5rem;'>
+""", unsafe_allow_html=True)
 
 tab2, tab1 = st.tabs(["🔎 Consultar Lotes", "🆕 Nueva Recepción"])
 
 # ====================== TAB 1 - NUEVA RECEPCIÓN ======================
 with tab1:
-    st.subheader("📤 Nueva Recepción de Precios")
+    st.markdown("<h3 style='font-family:Playfair Display,serif;color:#c8a84b;margin-bottom:1rem;'>📤 Nueva Recepción de Precios</h3>", unsafe_allow_html=True)
 
     if "uploader_counter" not in st.session_state:
         st.session_state.uploader_counter = 0
@@ -204,7 +212,7 @@ with tab1:
         df = cargar_precios(uploaded_file)
         if df is not None:
             fecha_llegada = st.date_input("Fecha de llegada a Bodega", value=None)
-            st.subheader("Vista previa del lote")
+            st.markdown("<p style='color:#a89880;font-size:0.82rem;letter-spacing:0.08em;text-transform:uppercase;font-family:DM Sans,sans-serif;margin-bottom:0.5rem;'>Vista Previa del Lote</p>", unsafe_allow_html=True)
             columnas_mostrar = ["Lote", "Productos", "Precio Venta Bruto", "Precio KG"]
             df_preview = df[columnas_mostrar + ["N°"]].copy()
             styled_df = style_by_numero(df_preview)
@@ -217,7 +225,7 @@ with tab1:
 
 # ====================== TAB 2 - CONSULTAR LOTES ======================
 with tab2:
-    st.subheader("🔎 Consultar Lotes Recibidos")
+    st.markdown("<h3 style='font-family:Playfair Display,serif;color:#c8a84b;margin-bottom:1rem;'>🔎 Consultar Lotes Recibidos</h3>", unsafe_allow_html=True)
     lotes_disponibles = listar_lotes_recibidos()
     if lotes_disponibles:
         lote_seleccionado = st.selectbox("Seleccionar Lote", lotes_disponibles)
@@ -269,7 +277,7 @@ with tab2:
                         st.error(f"❌ No se encontró etiqueta para '{producto}' en Google Drive")
 
                 if "ruta_base" in st.session_state:
-                    st.subheader("📋 Datos para la etiqueta")
+                    st.markdown("<h4 style='font-family:Playfair Display,serif;color:#c8a84b;margin-top:1rem;'>📋 Datos para la Etiqueta</h4>", unsafe_allow_html=True)
 
                     paises = ["Seleccione un país..."] + ["Afganistán", "Albania", "Alemania", "Andorra", "Angola", "Antigua y Barbuda", "Arabia Saudita", "Argelia", "Argentina", "Armenia", "Australia", "Austria", "Azerbaiyán", "Bahamas", "Bangladés", "Barbados", "Baréin", "Bélgica", "Belice", "Benín", "Bielorrusia", "Birmania", "Bolivia", "Bosnia y Herzegovina", "Botsuana", "Brasil", "Brunéi", "Bulgaria", "Burkina Faso", "Burundi", "Bután", "Cabo Verde", "Camboya", "Camerún", "Canadá", "Catar", "Chad", "Chile", "China", "Chipre", "Ciudad del Vaticano", "Colombia", "Comoras", "Corea del Norte", "Corea del Sur", "Costa de Marfil", "Costa Rica", "Croacia", "Cuba", "Dinamarca", "Dominica", "Ecuador", "Egipto", "El Salvador", "Emiratos Árabes Unidos", "Eritrea", "Eslovaquia", "Eslovenia", "España", "Estados Unidos", "Estonia", "Etiopía", "Filipinas", "Finlandia", "Fiyi", "Francia", "Gabón", "Gambia", "Georgia", "Ghana", "Granada", "Grecia", "Guatemala", "Guinea", "Guinea-Bisáu", "Guinea Ecuatorial", "Guyana", "Haití", "Honduras", "Hungría", "India", "Indonesia", "Irak", "Irán", "Irlanda", "Islandia", "Islas Marshall", "Islas Salomón", "Israel", "Italia", "Jamaica", "Japón", "Jordania", "Kazajistán", "Kenia", "Kirguistán", "Kiribati", "Kuwait", "Laos", "Lesoto", "Letonia", "Líbano", "Liberia", "Libia", "Liechtenstein", "Lituania", "Luxemburgo", "Macedonia del Norte", "Madagascar", "Malasia", "Malaui", "Maldivas", "Malí", "Malta", "Marruecos", "Mauricio", "Mauritania", "México", "Micronesia", "Moldavia", "Mónaco", "Mongolia", "Montenegro", "Mozambique", "Namibia", "Nauru", "Nepal", "Nicaragua", "Níger", "Nigeria", "Noruega", "Nueva Zelanda", "Omán", "Países Bajos", "Pakistán", "Palaos", "Panamá", "Papúa Nueva Guinea", "Paraguay", "Perú", "Polonia", "Portugal", "Reino Unido", "República Centroafricana", "República Checa", "República Democrática del Congo", "República Dominicana", "República del Congo", "Ruanda", "Rumania", "Rusia", "Samoa", "San Cristóbal y Nieves", "San Marino", "San Vicente y las Granadinas", "Santa Lucía", "Santo Tomé y Príncipe", "Senegal", "Serbia", "Seychelles", "Sierra Leona", "Singapur", "Siria", "Somalia", "Sri Lanka", "Suazilandia", "Sudáfrica", "Sudán", "Sudán del Sur", "Suecia", "Suiza", "Surinam", "Tailandia", "Tanzania", "Tayikistán", "Timor Oriental", "Togo", "Tonga", "Trinidad y Tobago", "Túnez", "Turkmenistán", "Turquía", "Tuvalu", "Ucrania", "Uganda", "Uruguay", "Uzbekistán", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Yibuti", "Zambia", "Zimbabue"]
                     origen = st.selectbox("País de Origen", options=paises, index=0, key=f"origen_{producto}")
@@ -304,4 +312,4 @@ with tab2:
     else:
         st.info("Aún no hay lotes recepcionados")
 
-st.caption("Desarrollado para La Trilla con ❤️ • Datos en Google Sheets v1.1")
+st.markdown("<div style='text-align:center;color:#3a3028;font-size:0.7rem;margin-top:2rem;font-family:DM Sans,sans-serif;letter-spacing:0.08em;'>Desarrollado para La Trilla · Datos en Google Sheets v1.1</div>", unsafe_allow_html=True)
