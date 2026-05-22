@@ -183,10 +183,12 @@ if "cajas_asignadas" not in st.session_state:
 historial = cargar_historial()
 
 # ==================== CARGA DE PLAN (solo si no es vendedor) ====================
+# POR ESTO:
 if not is_vendedor:
     df_plan = load_sheet("Plan_Envasado_Actual")
 else:
-    df_plan = pd.DataFrame()
+    df_plan = pd.DataFrame(columns=["Producto MP", "Formato", "Stock MP (kg)", 
+                                     "Unidades a Envasar", "Kg Usados", "Cobertura (semanas)"])
 
 # ==================== ESTILOS Y SESIÓN ====================
 st.markdown("""
@@ -375,10 +377,11 @@ st.caption(f"**{total_kg_real:.1f} kg** envasados de **{total_kg_plan:.1f} kg** 
 st.divider()
 
 # ==================== VISTAS ====================
-if not df_plan.empty:
+# POR ESTO:
+if not df_plan.empty and "Producto MP" in df_plan.columns:
     df_grouped = df_plan.groupby("Producto MP")
 else:
-    df_grouped = pd.DataFrame().groupby("Producto MP")  # vacío seguro
+    df_grouped = pd.DataFrame(columns=["Producto MP"]).groupby("Producto MP")
 
 if vista == "Dashboard":
     for producto, group in df_grouped:
