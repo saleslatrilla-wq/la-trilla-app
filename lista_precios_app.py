@@ -232,6 +232,9 @@ with tab2:
             st.success(f"**Lote:** {data['lote']} | **Fecha llegada:** {format_fecha_chilena(data['fecha_llegada'])}")
 
             df_lote = pd.DataFrame(data["productos"])
+            busqueda_precio = st.text_input("🔎 Buscar producto", placeholder="Ej: Lenteja, Poroto...", key="busqueda_precio")
+            if busqueda_precio:
+                df_lote = df_lote[df_lote["Productos"].str.contains(busqueda_precio, case=False, na=False)]
             styled_lote = style_by_numero(df_lote)
 
             selection = st.dataframe(
