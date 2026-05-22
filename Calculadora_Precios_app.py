@@ -606,23 +606,21 @@ with tab3:
             if len(match_bdb) == 0:
                 match_bdb = bdb_df[bdb_df["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
             if len(match_bdb) == 0:
-            costo_total_sub = round(costo_sub_neto + costo_insumos + costo_modmoi, 2)
-            utilidad_pesos = round(precio_bruto - costo_total_sub, 2) if utilidad > 0 else ""
-            resultados.append({
-                "N°": int(row["N°"]),
-                "Lote": lote,
-                "Producto": producto,
-                "Subproducto": sub_name,
-                "Costo Factor": round(costo_sub_neto, 2),
-                "Insumos + MOD y MOI": round(costo_insumos + costo_modmoi, 2),
-                "Costo Neto Total": costo_total_sub,
-                "Utilidad": utilidad_str,
-                "$ Utilidad": utilidad_pesos,
-                "% Real": real_pct_str,
-                "Precio Venta Neto": round(precio_neto_final, 2),
-                "Precio Venta Bruto": precio_bruto if utilidad > 0 else "",
-                "Precio KG": precio_kg if utilidad > 0 else ""
-            })
+                resultados.append({
+                    "N°": int(row["N°"]),
+                    "Lote": lote,
+                    "Producto": producto,
+                    "Subproducto": "No encontrado",
+                    "Costo Factor": 0,
+                    "Insumos + MOD y MOI": 0,
+                    "Costo Neto Total": round(costo_unitario * cantidad, 2),
+                    "Utilidad": "SIN UTILIDAD",
+                    "$ Utilidad": "",
+                    "% Real": "",
+                    "Precio Venta Neto": 0,
+                    "Precio Venta Bruto": "",
+                    "Precio KG": ""
+                })
                 continue
 
             main_factor = safe_float(match_bdb.iloc[0].get("SUB1_Factor", 1.0))
@@ -676,6 +674,8 @@ with tab3:
                     precio_kg = ""
                     real_pct_str = ""
 
+                costo_total_sub = round(costo_sub_neto + costo_insumos + costo_modmoi, 2)
+                utilidad_pesos = round(precio_bruto - costo_total_sub, 2) if utilidad > 0 else ""
                 resultados.append({
                     "N°": int(row["N°"]),
                     "Lote": lote,
@@ -683,8 +683,9 @@ with tab3:
                     "Subproducto": sub_name,
                     "Costo Factor": round(costo_sub_neto, 2),
                     "Insumos + MOD y MOI": round(costo_insumos + costo_modmoi, 2),
-                    "Costo Neto Total": round(costo_sub_neto + costo_insumos + costo_modmoi, 2),
+                    "Costo Neto Total": costo_total_sub,
                     "Utilidad": utilidad_str,
+                    "$ Utilidad": utilidad_pesos,
                     "% Real": real_pct_str,
                     "Precio Venta Neto": round(precio_neto_final, 2),
                     "Precio Venta Bruto": precio_bruto if utilidad > 0 else "",
@@ -707,7 +708,7 @@ with tab3:
             st.success("✅ Precios calculados correctamente según la lógica del Excel")
 
     if "df_precios" in st.session_state:
-    df_display = st.session_state.df_precios[["N°", "Lote", "Subproducto", "Costo Factor", "Insumos + MOD y MOI", "Costo Neto Total", "Utilidad", "$ Utilidad", "% Real", "Precio Venta Bruto", "Precio KG"]].copy()
+        df_display = st.session_state.df_precios[["N°", "Lote", "Subproducto", "Costo Factor", "Insumos + MOD y MOI", "Costo Neto Total", "Utilidad", "$ Utilidad", "% Real", "Precio Venta Bruto", "Precio KG"]].copy()
 
         def style_row(row):
             n = int(row["N°"])
@@ -727,6 +728,7 @@ with tab3:
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
+                    f'color: #1a86c7; font-weight: bold; background-color: {bg_color}',
                     f'color: {color_real}; background-color: {bg_color}',
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}'
