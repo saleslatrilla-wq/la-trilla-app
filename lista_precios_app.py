@@ -195,7 +195,7 @@ with tab1:
         st.session_state.recepcion_exitosa = False
 
     uploaded_file = st.file_uploader(
-        "Subir archivo Excel de precios (Bsale -> Reportes -> Recepciones)",
+        "Subir archivo Excel de precios (Modulo/ 3. 📊Calculadora de Precios -> 💰 Precios de Venta -> 📤Descargar Excel de Precios de Venta)",
         type=["xlsx", "xls"],
         key=f"uploader_key_{st.session_state.uploader_counter}"
     )
