@@ -615,7 +615,7 @@ with tab3:
                     "Insumos + MOD y MOI": 0,
                     "Costo Neto Total": round(costo_unitario * cantidad, 2),
                     "Utilidad": "SIN UTILIDAD",
-                    "$ Utilidad": "",
+                    "Utilidad Neta": "",
                     "% Real": "",
                     "Precio Venta Neto": 0,
                     "Precio Venta Bruto": "",
@@ -675,7 +675,8 @@ with tab3:
                     real_pct_str = ""
 
                 costo_total_sub = round(costo_sub_neto + costo_insumos + costo_modmoi, 2)
-                utilidad_pesos = round(precio_bruto - costo_total_sub, 2) if utilidad > 0 else ""
+                precio_venta_neto_calc = round(precio_bruto / 1.19, 2) if utilidad > 0 else 0
+                utilidad_neta = round(precio_venta_neto_calc - costo_total_sub, 2) if utilidad > 0 else ""
                 resultados.append({
                     "N°": int(row["N°"]),
                     "Lote": lote,
@@ -685,7 +686,7 @@ with tab3:
                     "Insumos + MOD y MOI": round(costo_insumos + costo_modmoi, 2),
                     "Costo Neto Total": costo_total_sub,
                     "Utilidad": utilidad_str,
-                    "$ Utilidad": utilidad_pesos,
+                    "Utilidad Neta": utilidad_neta,
                     "% Real": real_pct_str,
                     "Precio Venta Neto": round(precio_neto_final, 2),
                     "Precio Venta Bruto": precio_bruto if utilidad > 0 else "",
@@ -696,7 +697,7 @@ with tab3:
         for col in ["Costo Factor", "Insumos + MOD y MOI", "Costo Neto Total", "Precio Venta Neto"]:
             if col in df_final.columns:
                 df_final[col] = df_final[col].apply(lambda x: f"${x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-        for col in ["Precio Venta Bruto", "Precio KG", "$ Utilidad"]:
+        for col in ["Precio Venta Bruto", "Precio KG", "Utilidad Neta"]:
             if col in df_final.columns:
                 df_final[col] = df_final[col].apply(lambda x: f"${int(round(x)):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".") if x != "" and x != 0 else "")
         return df_final
@@ -708,7 +709,7 @@ with tab3:
             st.success("✅ Precios calculados correctamente según la lógica del Excel")
 
     if "df_precios" in st.session_state:
-        df_display = st.session_state.df_precios[["N°", "Lote", "Subproducto", "Costo Factor", "Insumos + MOD y MOI", "Costo Neto Total", "Utilidad", "$ Utilidad", "% Real", "Precio Venta Bruto", "Precio KG"]].copy()
+        df_display = st.session_state.df_precios[["N°", "Lote", "Subproducto", "Costo Factor", "Insumos + MOD y MOI", "Costo Neto Total", "Utilidad", "Utilidad Neta", "% Real", "Precio Venta Bruto", "Precio KG"]].copy()
 
         def style_row(row):
             n = int(row["N°"])
@@ -728,7 +729,7 @@ with tab3:
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
-                    f'color: #1a86c7; font-weight: bold; background-color: {bg_color}',
+                    f'color: #1a86c7; background-color: {bg_color}',
                     f'color: {color_real}; background-color: {bg_color}',
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}'
