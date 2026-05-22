@@ -102,7 +102,7 @@ def style_by_numero(df):
 def cargar_precios(uploaded_file):
     if uploaded_file is None:
         return None
-    df = pd.read_excel(uploaded_file)
+    df = pd.read_excel(uploaded_file, engine="xlrd" if uploaded_file.name.endswith(".xls") else "openpyxl")
     df = df.rename(columns={"Subproducto": "Productos"})
     columnas = ["N°", "Lote", "Productos", "Precio Venta Bruto", "Precio KG"]
     for col in columnas:
@@ -196,7 +196,7 @@ with tab1:
 
     uploaded_file = st.file_uploader(
         "Subir archivo Excel de precios (Bsale -> Reportes -> Recepciones)",
-        type=["xlsx"],
+        type=["xlsx", "xls"],
         key=f"uploader_key_{st.session_state.uploader_counter}"
     )
 
