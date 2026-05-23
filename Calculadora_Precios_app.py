@@ -307,6 +307,21 @@ with tab2:
                 df_to_show[col] = df_to_show[col].astype(str)
         df_to_show["Seleccionar"] = False
 
+        with st.expander("📋 Ver tabla de códigos disponibles (Márgenes)"):
+            ref_df = st.session_state.margenes_df[["Código", "Margen (%)", "Nota"]].copy()
+            ref_df["Margen (%)"] = pd.to_numeric(ref_df["Margen (%)"], errors="coerce")
+            ref_df = ref_df.sort_values("Código").reset_index(drop=True)
+            st.dataframe(
+                ref_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Código": st.column_config.TextColumn("COD", width="small"),
+                    "Margen (%)": st.column_config.NumberColumn("Margen (%)", format="%.1f%%", width="small"),
+                    "Nota": st.column_config.TextColumn("Descripción del margen", width="large"),
+                }
+            )
+
         edit_backend = st.toggle("Desbloquear edición de Backend Precios", value=False, key="toggle_backend")
 
         if st.button("➕ Agregar nuevo backend", key="add_backend"):
