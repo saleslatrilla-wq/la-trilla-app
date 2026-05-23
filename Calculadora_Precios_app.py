@@ -229,11 +229,16 @@ with tab2:
             )
             if edit_bdb:
                 if st.button("💾 Guardar cambios Identificador", type="primary", key="save_bdb"):
-                    cols_bdb = [c for c in edited.columns if c != "Seleccionar"]
-                    edited_data = edited[cols_bdb].copy()
-                    for i, orig_idx in enumerate(original_indices_bdb):
-                        for col in cols_bdb:
-                            st.session_state.bdb_full_df.at[orig_idx, col] = edited_data.at[i, col]
+                    editor_state = st.session_state.get("bdb_editor", {})
+                    edited_rows = editor_state.get("edited_rows", {})
+                    cols_bdb = [c for c in df_to_show.columns if c != "Seleccionar"]
+                    for str_i, changes in edited_rows.items():
+                        row_i = int(str_i)
+                        if row_i < len(original_indices_bdb):
+                            orig_idx = original_indices_bdb[row_i]
+                            for col, new_val in changes.items():
+                                if col in cols_bdb:
+                                    st.session_state.bdb_full_df.at[orig_idx, col] = new_val
                     save_df(st.session_state.bdb_full_df, "productos")
                     st.session_state["_toast_bdb"] = True
                     st.rerun()
@@ -337,11 +342,20 @@ with tab2:
         cols_to_save_backend = ["COD", "Producto", "Insumos", "MOD y MOI"]
         if edit_backend:
             if st.button("💾 Guardar cambios Backend", type="primary", key="save_backend"):
-                edited_data = edited[cols_to_save_backend].copy()
-                # Mapear filas editadas de vuelta a los índices originales del df completo
-                for i, orig_idx in enumerate(original_indices_backend):
-                    for col in cols_to_save_backend:
-                        st.session_state.backend_df.at[orig_idx, col] = edited_data.at[i, col]
+                # Leer los cambios reales desde el estado interno del widget
+                # (st.session_state["backend_editor"]["edited_rows"] contiene solo las celdas modificadas)
+                editor_state = st.session_state.get("backend_editor", {})
+                edited_rows = editor_state.get("edited_rows", {})
+
+                # Aplicar los cambios celda por celda usando el índice original correcto
+                for str_i, changes in edited_rows.items():
+                    row_i = int(str_i)
+                    if row_i < len(original_indices_backend):
+                        orig_idx = original_indices_backend[row_i]
+                        for col, new_val in changes.items():
+                            if col in cols_to_save_backend:
+                                st.session_state.backend_df.at[orig_idx, col] = new_val
+
                 save_df(st.session_state.backend_df, "backend_precios")
                 st.session_state["_toast_backend"] = True
                 st.rerun()
@@ -423,11 +437,16 @@ with tab2:
             )
             if edit_insumos:
                 if st.button("💾 Guardar cambios Insumos", type="primary", key="save_insumos"):
-                    cols_ins = [c for c in edited.columns if c != "Seleccionar"]
-                    edited_data = edited[cols_ins].copy()
-                    for i, orig_idx in enumerate(original_indices_insumos):
-                        for col in cols_ins:
-                            st.session_state.insumos_df.at[orig_idx, col] = edited_data.at[i, col]
+                    editor_state = st.session_state.get("insumos_editor", {})
+                    edited_rows = editor_state.get("edited_rows", {})
+                    cols_ins = [c for c in df_to_show.columns if c != "Seleccionar"]
+                    for str_i, changes in edited_rows.items():
+                        row_i = int(str_i)
+                        if row_i < len(original_indices_insumos):
+                            orig_idx = original_indices_insumos[row_i]
+                            for col, new_val in changes.items():
+                                if col in cols_ins:
+                                    st.session_state.insumos_df.at[orig_idx, col] = new_val
                     save_df(st.session_state.insumos_df, "insumos")
                     st.session_state["_toast_insumos"] = True
                     st.rerun()
@@ -504,11 +523,16 @@ with tab2:
             )
             if edit_modmoi:
                 if st.button("💾 Guardar cambios MOD y MOI", type="primary", key="save_modmoi"):
-                    cols_mm = [c for c in edited.columns if c != "Seleccionar"]
-                    edited_data = edited[cols_mm].copy()
-                    for i, orig_idx in enumerate(original_indices_modmoi):
-                        for col in cols_mm:
-                            st.session_state.modmoi_df.at[orig_idx, col] = edited_data.at[i, col]
+                    editor_state = st.session_state.get("modmoi_editor", {})
+                    edited_rows = editor_state.get("edited_rows", {})
+                    cols_mm = [c for c in df_to_show.columns if c != "Seleccionar"]
+                    for str_i, changes in edited_rows.items():
+                        row_i = int(str_i)
+                        if row_i < len(original_indices_modmoi):
+                            orig_idx = original_indices_modmoi[row_i]
+                            for col, new_val in changes.items():
+                                if col in cols_mm:
+                                    st.session_state.modmoi_df.at[orig_idx, col] = new_val
                     save_df(st.session_state.modmoi_df, "modmoi")
                     st.session_state["_toast_modmoi"] = True
                     st.rerun()
@@ -585,11 +609,16 @@ with tab2:
         )
         if edit_margenes:
             if st.button("💾 Guardar cambios Márgenes", type="primary", key="save_margenes"):
-                cols_mar = [c for c in edited.columns if c != "Seleccionar"]
-                edited_data = edited[cols_mar].copy()
-                for i, orig_idx in enumerate(original_indices_margenes):
-                    for col in cols_mar:
-                        st.session_state.margenes_df.at[orig_idx, col] = edited_data.at[i, col]
+                editor_state = st.session_state.get("margenes_editor", {})
+                edited_rows = editor_state.get("edited_rows", {})
+                cols_mar = [c for c in df_to_show.columns if c != "Seleccionar"]
+                for str_i, changes in edited_rows.items():
+                    row_i = int(str_i)
+                    if row_i < len(original_indices_margenes):
+                        orig_idx = original_indices_margenes[row_i]
+                        for col, new_val in changes.items():
+                            if col in cols_mar:
+                                st.session_state.margenes_df.at[orig_idx, col] = new_val
                 save_df(st.session_state.margenes_df, "margenes")
                 st.session_state["_toast_margenes"] = True
                 st.rerun()
