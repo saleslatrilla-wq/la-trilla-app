@@ -189,6 +189,7 @@ with tab2:
             if search_term and search_term.strip():
                 search = search_term.strip()
                 df_to_show = df_full[df_full["PRODUCTO"].astype(str).str.contains(search, case=False, na=False)]
+            original_indices_bdb = df_to_show.index.tolist()
             df_to_show = df_to_show.reset_index(drop=True)
             for col in df_to_show.columns:
                 if col != "Seleccionar":
@@ -227,8 +228,15 @@ with tab2:
                 key="bdb_editor"
             )
             if edit_bdb:
-                st.session_state.bdb_full_df.loc[df_to_show.index] = edited.iloc[0:len(df_to_show)].drop(columns=["Seleccionar"])
-                save_df(st.session_state.bdb_full_df, "productos")
+                if st.button("💾 Guardar cambios Identificador", type="primary", key="save_bdb"):
+                    cols_bdb = [c for c in edited.columns if c != "Seleccionar"]
+                    edited_data = edited[cols_bdb].copy()
+                    for i, orig_idx in enumerate(original_indices_bdb):
+                        for col in cols_bdb:
+                            st.session_state.bdb_full_df.at[orig_idx, col] = edited_data.at[i, col]
+                    save_df(st.session_state.bdb_full_df, "productos")
+                    st.success("✅ Cambios guardados correctamente en Google Sheets")
+                    st.rerun()
 
             if st.button("🗑️ Eliminar seleccionados", type="secondary", key="del_btn_bdb"):
                 selected = edited[edited["Seleccionar"] == True]
@@ -280,6 +288,8 @@ with tab2:
         if search_term and search_term.strip():
             search = search_term.strip()
             df_to_show = df_display[df_display["Producto"].astype(str).str.contains(search, case=False, na=False)]
+        # Guardar índices originales ANTES del reset para poder mapear de vuelta correctamente
+        original_indices_backend = df_to_show.index.tolist()
         df_to_show = df_to_show.reset_index(drop=True)
         for col in df_to_show.columns:
             if col != "Seleccionar" and col != "Utilidad":
@@ -320,9 +330,19 @@ with tab2:
             hide_index=True,
             key="backend_editor"
         )
+        # BUG FIX: Guardar solo con botón explícito (no en cada render).
+        # Usar columnas reales del backend (sin "Utilidad" que es calculada).
+        cols_to_save_backend = ["COD", "Producto", "Insumos", "MOD y MOI"]
         if edit_backend:
-            st.session_state.backend_df.loc[df_to_show.index] = edited.iloc[0:len(df_to_show)][cols_order]
-            save_df(st.session_state.backend_df, "backend_precios")
+            if st.button("💾 Guardar cambios Backend", type="primary", key="save_backend"):
+                edited_data = edited[cols_to_save_backend].copy()
+                # Mapear filas editadas de vuelta a los índices originales del df completo
+                for i, orig_idx in enumerate(original_indices_backend):
+                    for col in cols_to_save_backend:
+                        st.session_state.backend_df.at[orig_idx, col] = edited_data.at[i, col]
+                save_df(st.session_state.backend_df, "backend_precios")
+                st.success("✅ Cambios guardados correctamente en Google Sheets")
+                st.rerun()
 
         if st.button("🗑️ Eliminar seleccionados", type="secondary", key="del_btn_backend"):
             selected = edited[edited["Seleccionar"] == True]
@@ -362,6 +382,7 @@ with tab2:
             if search_term and search_term.strip():
                 search = search_term.strip()
                 df_to_show = df_full[df_full["Insumo"].astype(str).str.contains(search, case=False, na=False)]
+            original_indices_insumos = df_to_show.index.tolist()
             df_to_show = df_to_show.reset_index(drop=True)
             df_to_show["Código"] = df_to_show["Código"].astype(str)
             df_to_show["Insumo"] = df_to_show["Insumo"].astype(str)
@@ -397,8 +418,15 @@ with tab2:
                 key="insumos_editor"
             )
             if edit_insumos:
-                st.session_state.insumos_df.loc[df_to_show.index] = edited.iloc[0:len(df_to_show)].drop(columns=["Seleccionar"])
-                save_df(st.session_state.insumos_df, "insumos")
+                if st.button("💾 Guardar cambios Insumos", type="primary", key="save_insumos"):
+                    cols_ins = [c for c in edited.columns if c != "Seleccionar"]
+                    edited_data = edited[cols_ins].copy()
+                    for i, orig_idx in enumerate(original_indices_insumos):
+                        for col in cols_ins:
+                            st.session_state.insumos_df.at[orig_idx, col] = edited_data.at[i, col]
+                    save_df(st.session_state.insumos_df, "insumos")
+                    st.success("✅ Cambios guardados correctamente en Google Sheets")
+                    st.rerun()
             if st.button("🗑️ Eliminar seleccionados", type="secondary", key="del_btn_insumos"):
                 selected = edited[edited["Seleccionar"] == True]
                 if len(selected) > 0:
@@ -431,6 +459,7 @@ with tab2:
             if search_term and search_term.strip():
                 search = search_term.strip()
                 df_to_show = df_full[df_full["Descripción"].astype(str).str.contains(search, case=False, na=False)]
+            original_indices_modmoi = df_to_show.index.tolist()
             df_to_show = df_to_show.reset_index(drop=True)
             df_to_show["Código"] = df_to_show["Código"].astype(str)
             df_to_show["Tipo"] = df_to_show["Tipo"].astype(str)
@@ -468,8 +497,15 @@ with tab2:
                 key="modmoi_editor"
             )
             if edit_modmoi:
-                st.session_state.modmoi_df.loc[df_to_show.index] = edited.iloc[0:len(df_to_show)].drop(columns=["Seleccionar"])
-                save_df(st.session_state.modmoi_df, "modmoi")
+                if st.button("💾 Guardar cambios MOD y MOI", type="primary", key="save_modmoi"):
+                    cols_mm = [c for c in edited.columns if c != "Seleccionar"]
+                    edited_data = edited[cols_mm].copy()
+                    for i, orig_idx in enumerate(original_indices_modmoi):
+                        for col in cols_mm:
+                            st.session_state.modmoi_df.at[orig_idx, col] = edited_data.at[i, col]
+                    save_df(st.session_state.modmoi_df, "modmoi")
+                    st.success("✅ Cambios guardados correctamente en Google Sheets")
+                    st.rerun()
             if st.button("🗑️ Eliminar seleccionados", type="secondary", key="del_btn_modmoi"):
                 selected = edited[edited["Seleccionar"] == True]
                 if len(selected) > 0:
@@ -504,6 +540,7 @@ with tab2:
             search = search_term.strip()
             df_to_show = df_full[df_full["Nota"].astype(str).str.contains(search, case=False, na=False) |
                                 df_full["Código"].astype(str).str.contains(search, case=False, na=False)]
+        original_indices_margenes = df_to_show.index.tolist()
         df_to_show = df_to_show.reset_index(drop=True)
         df_to_show["Código"] = df_to_show["Código"].astype(str)
         df_to_show["Nota"] = df_to_show["Nota"].astype(str)
@@ -539,8 +576,15 @@ with tab2:
             key="margenes_editor"
         )
         if edit_margenes:
-            st.session_state.margenes_df.loc[df_to_show.index] = edited.iloc[0:len(df_to_show)].drop(columns=["Seleccionar"])
-            save_df(st.session_state.margenes_df, "margenes")
+            if st.button("💾 Guardar cambios Márgenes", type="primary", key="save_margenes"):
+                cols_mar = [c for c in edited.columns if c != "Seleccionar"]
+                edited_data = edited[cols_mar].copy()
+                for i, orig_idx in enumerate(original_indices_margenes):
+                    for col in cols_mar:
+                        st.session_state.margenes_df.at[orig_idx, col] = edited_data.at[i, col]
+                save_df(st.session_state.margenes_df, "margenes")
+                st.success("✅ Cambios guardados correctamente en Google Sheets")
+                st.rerun()
         if st.button("🗑️ Eliminar seleccionados", type="secondary", key="del_btn_margenes"):
             selected = edited[edited["Seleccionar"] == True]
             if len(selected) > 0:
