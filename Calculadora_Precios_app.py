@@ -246,25 +246,29 @@ with tab2:
                 st.toast("✅ Identificador guardado correctamente", icon="✅")
 
             if st.button("🗑️ Eliminar seleccionados", type="secondary", key="del_btn_bdb"):
-                selected = edited[edited["Seleccionar"] == True]
-                if len(selected) > 0:
+                selected_mask = edited["Seleccionar"] == True
+                if selected_mask.any():
+                    selected_orig = [original_indices_bdb[i] for i, v in enumerate(selected_mask) if v]
                     st.session_state["confirm_del_bdb"] = True
-                    st.session_state["indices_to_del_bdb"] = df_to_show.index[edited["Seleccionar"] == True].tolist()
+                    st.session_state["indices_to_del_bdb"] = selected_orig
                 else:
                     st.warning("No hay filas seleccionadas")
-                if st.session_state.get("confirm_del_bdb", False):
-                    st.warning(f"¿Estás seguro de eliminar permanentemente **{len(st.session_state['indices_to_del_bdb'])} fila(s)** de la base de datos?")
-                    col1, col2 = st.columns(2)
-                    if col1.button("Sí, eliminar", key="yes_del_bdb"):
-                        st.session_state.bdb_full_df = st.session_state.bdb_full_df.drop(st.session_state["indices_to_del_bdb"]).reset_index(drop=True)
-                        save_df(st.session_state.bdb_full_df, "productos")
-                        del st.session_state["confirm_del_bdb"]
-                        del st.session_state["indices_to_del_bdb"]
-                        st.rerun()
-                    if col2.button("Cancelar", key="cancel_del_bdb"):
-                        del st.session_state["confirm_del_bdb"]
-                        del st.session_state["indices_to_del_bdb"]
-                        st.rerun()
+            if st.session_state.get("confirm_del_bdb", False):
+                st.warning(f"¿Estás seguro de eliminar permanentemente **{len(st.session_state['indices_to_del_bdb'])} fila(s)** de la base de datos?")
+                col1, col2 = st.columns(2)
+                if col1.button("Sí, eliminar", key="yes_del_bdb"):
+                    st.session_state.bdb_full_df = st.session_state.bdb_full_df.drop(st.session_state["indices_to_del_bdb"]).reset_index(drop=True)
+                    save_df(st.session_state.bdb_full_df, "productos")
+                    del st.session_state["confirm_del_bdb"]
+                    del st.session_state["indices_to_del_bdb"]
+                    st.session_state["_toast_del_bdb"] = True
+                    st.rerun()
+                if col2.button("Cancelar", key="cancel_del_bdb"):
+                    del st.session_state["confirm_del_bdb"]
+                    del st.session_state["indices_to_del_bdb"]
+                    st.rerun()
+            if st.session_state.pop("_toast_del_bdb", False):
+                st.toast("🗑️ Registro eliminado correctamente", icon="🗑️")
 
     # ===================== BACKEND PRECIOS =====================
     with subtab2:
@@ -363,25 +367,29 @@ with tab2:
             st.toast("✅ Backend Precios guardado correctamente", icon="✅")
 
         if st.button("🗑️ Eliminar seleccionados", type="secondary", key="del_btn_backend"):
-            selected = edited[edited["Seleccionar"] == True]
-            if len(selected) > 0:
+            selected_mask = edited["Seleccionar"] == True
+            if selected_mask.any():
+                selected_orig = [original_indices_backend[i] for i, v in enumerate(selected_mask) if v]
                 st.session_state["confirm_del_backend"] = True
-                st.session_state["indices_to_del_backend"] = df_to_show.index[edited["Seleccionar"] == True].tolist()
+                st.session_state["indices_to_del_backend"] = selected_orig
             else:
                 st.warning("No hay filas seleccionadas")
-            if st.session_state.get("confirm_del_backend", False):
-                st.warning(f"¿Estás seguro de eliminar permanentemente **{len(st.session_state['indices_to_del_backend'])} fila(s)** de la base de datos?")
-                col1, col2 = st.columns(2)
-                if col1.button("Sí, eliminar", key="yes_del_backend"):
-                    st.session_state.backend_df = st.session_state.backend_df.drop(st.session_state["indices_to_del_backend"]).reset_index(drop=True)
-                    save_df(st.session_state.backend_df, "backend_precios")
-                    del st.session_state["confirm_del_backend"]
-                    del st.session_state["indices_to_del_backend"]
-                    st.rerun()
-                if col2.button("Cancelar", key="cancel_del_backend"):
-                    del st.session_state["confirm_del_backend"]
-                    del st.session_state["indices_to_del_backend"]
-                    st.rerun()
+        if st.session_state.get("confirm_del_backend", False):
+            st.warning(f"¿Estás seguro de eliminar permanentemente **{len(st.session_state['indices_to_del_backend'])} fila(s)** de la base de datos?")
+            col1, col2 = st.columns(2)
+            if col1.button("Sí, eliminar", key="yes_del_backend"):
+                st.session_state.backend_df = st.session_state.backend_df.drop(st.session_state["indices_to_del_backend"]).reset_index(drop=True)
+                save_df(st.session_state.backend_df, "backend_precios")
+                del st.session_state["confirm_del_backend"]
+                del st.session_state["indices_to_del_backend"]
+                st.session_state["_toast_del_backend"] = True
+                st.rerun()
+            if col2.button("Cancelar", key="cancel_del_backend"):
+                del st.session_state["confirm_del_backend"]
+                del st.session_state["indices_to_del_backend"]
+                st.rerun()
+        if st.session_state.pop("_toast_del_backend", False):
+            st.toast("🗑️ Registro eliminado correctamente", icon="🗑️")
 
     # ===================== COSTOS =====================
     with subtab3:
@@ -453,25 +461,29 @@ with tab2:
             if st.session_state.pop("_toast_insumos", False):
                 st.toast("✅ Insumos guardado correctamente", icon="✅")
             if st.button("🗑️ Eliminar seleccionados", type="secondary", key="del_btn_insumos"):
-                selected = edited[edited["Seleccionar"] == True]
-                if len(selected) > 0:
+                selected_mask = edited["Seleccionar"] == True
+                if selected_mask.any():
+                    selected_orig = [original_indices_insumos[i] for i, v in enumerate(selected_mask) if v]
                     st.session_state["confirm_del_insumos"] = True
-                    st.session_state["indices_to_del_insumos"] = df_to_show.index[edited["Seleccionar"] == True].tolist()
+                    st.session_state["indices_to_del_insumos"] = selected_orig
                 else:
                     st.warning("No hay filas seleccionadas")
-                if st.session_state.get("confirm_del_insumos", False):
-                    st.warning(f"¿Estás seguro de eliminar permanentemente **{len(st.session_state['indices_to_del_insumos'])} fila(s)** de la base de datos?")
-                    col1, col2 = st.columns(2)
-                    if col1.button("Sí, eliminar", key="yes_del_insumos"):
-                        st.session_state.insumos_df = st.session_state.insumos_df.drop(st.session_state["indices_to_del_insumos"]).reset_index(drop=True)
-                        save_df(st.session_state.insumos_df, "insumos")
-                        del st.session_state["confirm_del_insumos"]
-                        del st.session_state["indices_to_del_insumos"]
-                        st.rerun()
-                    if col2.button("Cancelar", key="cancel_del_insumos"):
-                        del st.session_state["confirm_del_insumos"]
-                        del st.session_state["indices_to_del_insumos"]
-                        st.rerun()
+            if st.session_state.get("confirm_del_insumos", False):
+                st.warning(f"¿Estás seguro de eliminar permanentemente **{len(st.session_state['indices_to_del_insumos'])} fila(s)** de la base de datos?")
+                col1, col2 = st.columns(2)
+                if col1.button("Sí, eliminar", key="yes_del_insumos"):
+                    st.session_state.insumos_df = st.session_state.insumos_df.drop(st.session_state["indices_to_del_insumos"]).reset_index(drop=True)
+                    save_df(st.session_state.insumos_df, "insumos")
+                    del st.session_state["confirm_del_insumos"]
+                    del st.session_state["indices_to_del_insumos"]
+                    st.session_state["_toast_del_insumos"] = True
+                    st.rerun()
+                if col2.button("Cancelar", key="cancel_del_insumos"):
+                    del st.session_state["confirm_del_insumos"]
+                    del st.session_state["indices_to_del_insumos"]
+                    st.rerun()
+            if st.session_state.pop("_toast_del_insumos", False):
+                st.toast("🗑️ Insumo eliminado correctamente", icon="🗑️")
         with cost_sub2:
             st.subheader("MOD y MOI")
             if "modmoi_df" not in st.session_state:
@@ -539,25 +551,29 @@ with tab2:
             if st.session_state.pop("_toast_modmoi", False):
                 st.toast("✅ MOD y MOI guardado correctamente", icon="✅")
             if st.button("🗑️ Eliminar seleccionados", type="secondary", key="del_btn_modmoi"):
-                selected = edited[edited["Seleccionar"] == True]
-                if len(selected) > 0:
+                selected_mask = edited["Seleccionar"] == True
+                if selected_mask.any():
+                    selected_orig = [original_indices_modmoi[i] for i, v in enumerate(selected_mask) if v]
                     st.session_state["confirm_del_modmoi"] = True
-                    st.session_state["indices_to_del_modmoi"] = df_to_show.index[edited["Seleccionar"] == True].tolist()
+                    st.session_state["indices_to_del_modmoi"] = selected_orig
                 else:
                     st.warning("No hay filas seleccionadas")
-                if st.session_state.get("confirm_del_modmoi", False):
-                    st.warning(f"¿Estás seguro de eliminar permanentemente **{len(st.session_state['indices_to_del_modmoi'])} fila(s)** de la base de datos?")
-                    col1, col2 = st.columns(2)
-                    if col1.button("Sí, eliminar", key="yes_del_modmoi"):
-                        st.session_state.modmoi_df = st.session_state.modmoi_df.drop(st.session_state["indices_to_del_modmoi"]).reset_index(drop=True)
-                        save_df(st.session_state.modmoi_df, "modmoi")
-                        del st.session_state["confirm_del_modmoi"]
-                        del st.session_state["indices_to_del_modmoi"]
-                        st.rerun()
-                    if col2.button("Cancelar", key="cancel_del_modmoi"):
-                        del st.session_state["confirm_del_modmoi"]
-                        del st.session_state["indices_to_del_modmoi"]
-                        st.rerun()
+            if st.session_state.get("confirm_del_modmoi", False):
+                st.warning(f"¿Estás seguro de eliminar permanentemente **{len(st.session_state['indices_to_del_modmoi'])} fila(s)** de la base de datos?")
+                col1, col2 = st.columns(2)
+                if col1.button("Sí, eliminar", key="yes_del_modmoi"):
+                    st.session_state.modmoi_df = st.session_state.modmoi_df.drop(st.session_state["indices_to_del_modmoi"]).reset_index(drop=True)
+                    save_df(st.session_state.modmoi_df, "modmoi")
+                    del st.session_state["confirm_del_modmoi"]
+                    del st.session_state["indices_to_del_modmoi"]
+                    st.session_state["_toast_del_modmoi"] = True
+                    st.rerun()
+                if col2.button("Cancelar", key="cancel_del_modmoi"):
+                    del st.session_state["confirm_del_modmoi"]
+                    del st.session_state["indices_to_del_modmoi"]
+                    st.rerun()
+            if st.session_state.pop("_toast_del_modmoi", False):
+                st.toast("🗑️ MOD/MOI eliminado correctamente", icon="🗑️")
 
     # ===================== MÁRGENES =====================
     with subtab4:
@@ -625,25 +641,31 @@ with tab2:
         if st.session_state.pop("_toast_margenes", False):
             st.toast("✅ Márgenes guardado correctamente", icon="✅")
         if st.button("🗑️ Eliminar seleccionados", type="secondary", key="del_btn_margenes"):
-            selected = edited[edited["Seleccionar"] == True]
-            if len(selected) > 0:
+            selected_mask = edited["Seleccionar"] == True
+            if selected_mask.any():
+                # Usar original_indices para mapear correctamente al df completo
+                selected_orig = [original_indices_margenes[i] for i, v in enumerate(selected_mask) if v]
                 st.session_state["confirm_del_margenes"] = True
-                st.session_state["indices_to_del_margenes"] = df_to_show.index[edited["Seleccionar"] == True].tolist()
+                st.session_state["indices_to_del_margenes"] = selected_orig
             else:
                 st.warning("No hay filas seleccionadas")
-            if st.session_state.get("confirm_del_margenes", False):
-                st.warning(f"¿Estás seguro de eliminar permanentemente **{len(st.session_state['indices_to_del_margenes'])} fila(s)** de la base de datos?")
-                col1, col2 = st.columns(2)
-                if col1.button("Sí, eliminar", key="yes_del_margenes"):
-                    st.session_state.margenes_df = st.session_state.margenes_df.drop(st.session_state["indices_to_del_margenes"]).reset_index(drop=True)
-                    save_df(st.session_state.margenes_df, "margenes")
-                    del st.session_state["confirm_del_margenes"]
-                    del st.session_state["indices_to_del_margenes"]
-                    st.rerun()
-                if col2.button("Cancelar", key="cancel_del_margenes"):
-                    del st.session_state["confirm_del_margenes"]
-                    del st.session_state["indices_to_del_margenes"]
-                    st.rerun()
+        # FUERA del if-button para que se renderice en reruns posteriores
+        if st.session_state.get("confirm_del_margenes", False):
+            st.warning(f"¿Estás seguro de eliminar permanentemente **{len(st.session_state['indices_to_del_margenes'])} fila(s)** de la base de datos?")
+            col1, col2 = st.columns(2)
+            if col1.button("Sí, eliminar", key="yes_del_margenes"):
+                st.session_state.margenes_df = st.session_state.margenes_df.drop(st.session_state["indices_to_del_margenes"]).reset_index(drop=True)
+                save_df(st.session_state.margenes_df, "margenes")
+                del st.session_state["confirm_del_margenes"]
+                del st.session_state["indices_to_del_margenes"]
+                st.session_state["_toast_del_margenes"] = True
+                st.rerun()
+            if col2.button("Cancelar", key="cancel_del_margenes"):
+                del st.session_state["confirm_del_margenes"]
+                del st.session_state["indices_to_del_margenes"]
+                st.rerun()
+        if st.session_state.pop("_toast_del_margenes", False):
+            st.toast("🗑️ Margen eliminado correctamente", icon="🗑️")
 
 # ==================================== PESTAÑA 3: PRECIOS DE VENTA ====================================
 with tab3:
