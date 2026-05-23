@@ -235,8 +235,10 @@ with tab2:
                         for col in cols_bdb:
                             st.session_state.bdb_full_df.at[orig_idx, col] = edited_data.at[i, col]
                     save_df(st.session_state.bdb_full_df, "productos")
-                    st.success("✅ Cambios guardados correctamente en Google Sheets")
+                    st.session_state["_toast_bdb"] = True
                     st.rerun()
+            if st.session_state.pop("_toast_bdb", False):
+                st.toast("✅ Identificador guardado correctamente", icon="✅")
 
             if st.button("🗑️ Eliminar seleccionados", type="secondary", key="del_btn_bdb"):
                 selected = edited[edited["Seleccionar"] == True]
@@ -341,8 +343,10 @@ with tab2:
                     for col in cols_to_save_backend:
                         st.session_state.backend_df.at[orig_idx, col] = edited_data.at[i, col]
                 save_df(st.session_state.backend_df, "backend_precios")
-                st.success("✅ Cambios guardados correctamente en Google Sheets")
+                st.session_state["_toast_backend"] = True
                 st.rerun()
+        if st.session_state.pop("_toast_backend", False):
+            st.toast("✅ Backend Precios guardado correctamente", icon="✅")
 
         if st.button("🗑️ Eliminar seleccionados", type="secondary", key="del_btn_backend"):
             selected = edited[edited["Seleccionar"] == True]
@@ -425,8 +429,10 @@ with tab2:
                         for col in cols_ins:
                             st.session_state.insumos_df.at[orig_idx, col] = edited_data.at[i, col]
                     save_df(st.session_state.insumos_df, "insumos")
-                    st.success("✅ Cambios guardados correctamente en Google Sheets")
+                    st.session_state["_toast_insumos"] = True
                     st.rerun()
+            if st.session_state.pop("_toast_insumos", False):
+                st.toast("✅ Insumos guardado correctamente", icon="✅")
             if st.button("🗑️ Eliminar seleccionados", type="secondary", key="del_btn_insumos"):
                 selected = edited[edited["Seleccionar"] == True]
                 if len(selected) > 0:
@@ -504,8 +510,10 @@ with tab2:
                         for col in cols_mm:
                             st.session_state.modmoi_df.at[orig_idx, col] = edited_data.at[i, col]
                     save_df(st.session_state.modmoi_df, "modmoi")
-                    st.success("✅ Cambios guardados correctamente en Google Sheets")
+                    st.session_state["_toast_modmoi"] = True
                     st.rerun()
+            if st.session_state.pop("_toast_modmoi", False):
+                st.toast("✅ MOD y MOI guardado correctamente", icon="✅")
             if st.button("🗑️ Eliminar seleccionados", type="secondary", key="del_btn_modmoi"):
                 selected = edited[edited["Seleccionar"] == True]
                 if len(selected) > 0:
@@ -583,8 +591,10 @@ with tab2:
                     for col in cols_mar:
                         st.session_state.margenes_df.at[orig_idx, col] = edited_data.at[i, col]
                 save_df(st.session_state.margenes_df, "margenes")
-                st.success("✅ Cambios guardados correctamente en Google Sheets")
+                st.session_state["_toast_margenes"] = True
                 st.rerun()
+        if st.session_state.pop("_toast_margenes", False):
+            st.toast("✅ Márgenes guardado correctamente", icon="✅")
         if st.button("🗑️ Eliminar seleccionados", type="secondary", key="del_btn_margenes"):
             selected = edited[edited["Seleccionar"] == True]
             if len(selected) > 0:
