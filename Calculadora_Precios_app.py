@@ -32,7 +32,29 @@ def save_sheet(sheet_name, df):
         worksheet.update([[]])
 
 def save_df(df, sheet_name):
-    save_sheet(sheet_name, df)
+    """Guarda df en Google Sheets. Los valores numéricos se convierten correctamente
+    para evitar que gspread agregue apóstrofes a strings que parecen números."""
+    try:
+        worksheet = spreadsheet.worksheet(sheet_name)
+    except:
+        worksheet = spreadsheet.add_worksheet(title=sheet_name, rows="1000", cols="20")
+    worksheet.clear()
+    df_clean = df.replace([float('nan'), float('inf'), -float('inf')], [None, None, None])
+    if not df_clean.empty:
+        rows = [df_clean.columns.values.tolist()]
+        for _, row in df_clean.iterrows():
+            clean_row = []
+            for val in row:
+                if val is None:
+                    clean_row.append("")
+                elif isinstance(val, float) and val == int(val):
+                    clean_row.append(int(val))
+                else:
+                    clean_row.append(val)
+            rows.append(clean_row)
+        worksheet.update(rows, value_input_option="RAW")
+    else:
+        worksheet.update([[]])
 
 def load_df(sheet_name, columns=None):
     df = load_sheet(sheet_name)
@@ -317,7 +339,7 @@ with tab2:
                 hide_index=True,
                 column_config={
                     "Código": st.column_config.TextColumn("COD", width="small"),
-                    "Margen (%)": st.column_config.NumberColumn("Margen (%)", format="%.1f%%", width="small"),
+                    "Margen (%)": st.column_config.NumberColumn("Margen (%)", format="%.1f", width="small"),
                     "Nota": st.column_config.TextColumn("Descripción del margen", width="large"),
                 }
             )
@@ -346,9 +368,15 @@ with tab2:
             num_rows="fixed",
             disabled=not edit_backend,
             column_config={
-                "COD": st.column_config.TextColumn(width="auto"),
-                "Utilidad": st.column_config.NumberColumn(width="auto", format="%.1f%%"),
-                "Producto": st.column_config.TextColumn(width="auto"),
+                "COD": st.column_config.TextColumn(width="small"),
+                "Utilidad": st.column_config.NumberColumn(
+                    "Utilidad (%)",
+                    width="small",
+                    format="%.1f",
+                    disabled=True,
+                    help="Calculado automáticamente desde Márgenes"
+                ),
+                "Producto": st.column_config.TextColumn(width="large"),
                 "Insumos": st.column_config.TextColumn(width="auto"),
                 "MOD y MOI": st.column_config.TextColumn(width="auto"),
                 "Seleccionar": st.column_config.CheckboxColumn("Seleccionar", default=False, width="small")
@@ -624,15 +652,21 @@ with tab2:
                     st.success("Margen agregado")
                     st.session_state.show_add_margenes = False
                     st.rerun()
+        df_to_show["Margen (%)"] = pd.to_numeric(df_to_show["Margen (%)"], errors="coerce").fillna(0.0)
         edited = st.data_editor(
             df_to_show,
             use_container_width=True,
             num_rows="fixed",
             disabled=not edit_margenes,
             column_config={
-                "Código": st.column_config.TextColumn(width="auto"),
-                "Margen (%)": st.column_config.NumberColumn(width="auto", format="%.1f%%"),
-                "Nota": st.column_config.TextColumn(width="auto"),
+                "Código": st.column_config.TextColumn(width="small"),
+                "Margen (%)": st.column_config.NumberColumn(
+                    "Margen (%)",
+                    width="small",
+                    format="%.1f",
+                    help="Ingresa el valor como número (ej: 42.5 = 42.5%)"
+                ),
+                "Nota": st.column_config.TextColumn(width="large"),
                 "Seleccionar": st.column_config.CheckboxColumn("Seleccionar", default=False, width="small")
             },
             hide_index=True,
