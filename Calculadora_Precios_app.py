@@ -14,20 +14,34 @@ def normalize_numeric_string(val):
     """Convierte strings con coma decimal (ej: '42,5') a float (42.5)."""
     if isinstance(val, str):
         stripped = val.strip()
+        if stripped == "":
+            return ""
         # Si tiene coma y no tiene punto → separador decimal regional
         if ',' in stripped and '.' not in stripped:
             try:
                 return float(stripped.replace(',', '.'))
             except ValueError:
                 return val
+        # Intentar convertir a número si es posible
+        try:
+            f = float(stripped)
+            return int(f) if f == int(f) else f
+        except ValueError:
+            return val
     return val
 
 def load_sheet(sheet_name):
     try:
         worksheet = spreadsheet.worksheet(sheet_name)
-        data = worksheet.get_all_records()
-        df = pd.DataFrame(data)
-        # Normalizar valores con coma decimal en todas las celdas
+        # get_all_values() trae strings crudos, evitando que gspread convierta
+        # '42,5' a entero 425 (lo que hace get_all_records con configuración regional es/CL)
+        all_values = worksheet.get_all_values()
+        if not all_values or len(all_values) < 2:
+            return pd.DataFrame()
+        headers = all_values[0]
+        rows = all_values[1:]
+        df = pd.DataFrame(rows, columns=headers)
+        # Normalizar todas las celdas: coma decimal → punto, strings numéricos → números
         for col in df.columns:
             df[col] = df[col].apply(normalize_numeric_string)
         return df
