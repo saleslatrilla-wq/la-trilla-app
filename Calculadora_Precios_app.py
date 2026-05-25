@@ -10,11 +10,27 @@ st.title("📊 Automatizador de Precios")
 # ===================== CONEXIÓN A GOOGLE SHEETS =====================
 spreadsheet = st.session_state.google_spreadsheet
 
+def normalize_numeric_string(val):
+    """Convierte strings con coma decimal (ej: '42,5') a float (42.5)."""
+    if isinstance(val, str):
+        stripped = val.strip()
+        # Si tiene coma y no tiene punto → separador decimal regional
+        if ',' in stripped and '.' not in stripped:
+            try:
+                return float(stripped.replace(',', '.'))
+            except ValueError:
+                return val
+    return val
+
 def load_sheet(sheet_name):
     try:
         worksheet = spreadsheet.worksheet(sheet_name)
         data = worksheet.get_all_records()
-        return pd.DataFrame(data)
+        df = pd.DataFrame(data)
+        # Normalizar valores con coma decimal en todas las celdas
+        for col in df.columns:
+            df[col] = df[col].apply(normalize_numeric_string)
+        return df
     except:
         worksheet = spreadsheet.add_worksheet(title=sheet_name, rows="1000", cols="20")
         return pd.DataFrame()
@@ -47,8 +63,12 @@ def save_df(df, sheet_name):
             for val in row:
                 if val is None:
                     clean_row.append("")
-                elif isinstance(val, float) and val == int(val):
-                    clean_row.append(int(val))
+                elif isinstance(val, float):
+                    # Solo convertir a int si es entero exacto (ej: 40.0 → 40), preservar decimales (42.5 → 42.5)
+                    if not (val != val) and val == int(val):  # no es NaN y es entero exacto
+                        clean_row.append(int(val))
+                    else:
+                        clean_row.append(val)
                 else:
                     clean_row.append(val)
             rows.append(clean_row)
