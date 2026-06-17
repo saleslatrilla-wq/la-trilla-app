@@ -109,25 +109,6 @@ def load_reception():
         return df, metadata
     return None, None
 
-
-def ensure_columns(df, expected_cols, sheet_name):
-    """Valida que el DataFrame tenga exactamente las columnas esperadas.
-    Si faltan, muestra error claro en español y detiene la ejecución (evita KeyError críptico de pandas)."""
-    if df is None or df.empty:
-        return pd.DataFrame(columns=expected_cols)
-    missing = [c for c in expected_cols if c not in df.columns]
-    if missing:
-        st.error(
-            f"❌ **Error en hoja de Google Sheets '{sheet_name}'**: "
-            f"Faltan las columnas {missing}. "
-            f"Columnas actuales encontradas: {list(df.columns)}. "
-            f"Por favor ve a Google Sheets → abre la hoja '{sheet_name}' y corrige/agrega los encabezados "
-            f"con los nombres EXACTOS (mayúsculas, minúsculas, acentos, espacios y tildes idénticos)."
-        )
-        st.stop()
-    return df
-
-
 tab1, tab2, tab3 = st.tabs(["📥 Recepción", "⚙️ Configuración", "💰 Precios de Venta"])
 
 # ==================================== PESTAÑA 1: RECEPCIÓN ====================================
@@ -253,11 +234,7 @@ with tab2:
         st.subheader("📋 Identificador")
         st.caption("Base completa de productos y sus subproductos")
         if "bdb_full_df" not in st.session_state:
-            df_loaded = load_df("productos")
-            if not df_loaded.empty and "PRODUCTO" not in df_loaded.columns:
-                st.error(f"❌ La hoja 'productos' debe tener la columna 'PRODUCTO' (mayúsculas). Columnas actuales: {list(df_loaded.columns)}")
-                st.stop()
-            st.session_state.bdb_full_df = df_loaded
+            st.session_state.bdb_full_df = load_df("productos")
         if st.session_state.bdb_full_df.empty:
             st.warning("⚠️ La pestaña 'productos' está vacía.")
 
@@ -354,15 +331,13 @@ with tab2:
         st.subheader("🔧 Backend Precios")
         st.caption("Utilidad se calcula automáticamente si existe COD en Márgenes.")
         if "backend_df" not in st.session_state:
-            df_loaded = load_df("backend_precios", columns=["COD", "Producto", "Insumos", "MOD y MOI", "Gastos Venta Variable"])
-            st.session_state.backend_df = ensure_columns(df_loaded, ["COD", "Producto", "Insumos", "MOD y MOI", "Gastos Venta Variable"], "backend_precios")
+            st.session_state.backend_df = load_df("backend_precios", columns=["COD", "Producto", "Insumos", "MOD y MOI", "Gastos Venta Variable"])
         if "margenes_df" not in st.session_state:
-            df_loaded = load_df("margenes", columns=["Código", "Margen (%)", "Nota"])
-            st.session_state.margenes_df = ensure_columns(df_loaded, ["Código", "Margen (%)", "Nota"], "margenes")
+            st.session_state.margenes_df = load_df("margenes", columns=["Código", "Margen (%)", "Nota"])
         if "gastos_venta_df" not in st.session_state:
-            df_loaded = load_df("gastos_venta", columns=["Código", "Costo %", "Descripción"])
-            df_loaded["Código"] = df_loaded["Código"].astype(str)
-            st.session_state.gastos_venta_df = ensure_columns(df_loaded, ["Código", "Costo %", "Descripción"], "gastos_venta")
+            df_gv_init = load_df("gastos_venta", columns=["Código", "Costo %", "Descripción"])
+            df_gv_init["Código"] = df_gv_init["Código"].astype(str)
+            st.session_state.gastos_venta_df = df_gv_init
 
         def calcular_utilidad(cod, margenes_df):
             if pd.isna(cod) or str(cod).strip() == "":
@@ -520,10 +495,10 @@ with tab2:
         with cost_sub1:
             st.subheader("Insumos")
             if "insumos_df" not in st.session_state:
-                df_loaded = load_df("insumos", columns=["Código", "Insumo", "Costo Neto Unitario"])
-                df_loaded["Código"] = df_loaded["Código"].astype(str)
-                df_loaded["Costo Neto Unitario"] = pd.to_numeric(df_loaded["Costo Neto Unitario"], errors="coerce").fillna(0)
-                st.session_state.insumos_df = ensure_columns(df_loaded, ["Código", "Insumo", "Costo Neto Unitario"], "insumos")
+                df = load_df("insumos", columns=["Código", "Insumo", "Costo Neto Unitario"])
+                df["Código"] = df["Código"].astype(str)
+                df["Costo Neto Unitario"] = pd.to_numeric(df["Costo Neto Unitario"], errors="coerce").fillna(0)
+                st.session_state.insumos_df = df
             search_term = st.text_input("🔎 Buscar insumo", "", placeholder="Escribe nombre del insumo...", key="search_insumos")
             df_full = st.session_state.insumos_df.copy().fillna("")
             df_to_show = df_full
@@ -609,9 +584,9 @@ with tab2:
         with cost_sub2:
             st.subheader("MOD y MOI")
             if "modmoi_df" not in st.session_state:
-                df_loaded = load_df("modmoi", columns=["Código", "Tipo", "Costo Neto", "Descripción"])
-                df_loaded["Código"] = df_loaded["Código"].astype(str)
-                st.session_state.modmoi_df = ensure_columns(df_loaded, ["Código", "Tipo", "Costo Neto", "Descripción"], "modmoi")
+                df = load_df("modmoi", columns=["Código", "Tipo", "Costo Neto", "Descripción"])
+                df["Código"] = df["Código"].astype(str)
+                st.session_state.modmoi_df = df
             search_term = st.text_input("🔎 Buscar MOD/MOI", "", placeholder="Escribe descripción...", key="search_modmoi")
             df_full = st.session_state.modmoi_df.copy().fillna("")
             df_to_show = df_full
@@ -700,9 +675,9 @@ with tab2:
             st.subheader("Gastos de Venta Variable")
             st.caption("Costos porcentuales sobre el precio de venta (ej: comisión por uso de Transbank). Se referencian por código desde Backend Precios.")
             if "gastos_venta_df" not in st.session_state:
-                df_loaded = load_df("gastos_venta", columns=["Código", "Costo %", "Descripción"])
-                df_loaded["Código"] = df_loaded["Código"].astype(str)
-                st.session_state.gastos_venta_df = ensure_columns(df_loaded, ["Código", "Costo %", "Descripción"], "gastos_venta")
+                df = load_df("gastos_venta", columns=["Código", "Costo %", "Descripción"])
+                df["Código"] = df["Código"].astype(str)
+                st.session_state.gastos_venta_df = df
             search_term = st.text_input("🔎 Buscar gasto de venta", "", placeholder="Escribe descripción o código...", key="search_gastos_venta")
             df_full = st.session_state.gastos_venta_df.copy().fillna("")
             df_to_show = df_full
@@ -798,8 +773,7 @@ with tab2:
     with subtab4:
         st.subheader("📏 Márgenes")
         if "margenes_df" not in st.session_state:
-            df_loaded = load_df("margenes", columns=["Código", "Margen (%)", "Nota"])
-            st.session_state.margenes_df = ensure_columns(df_loaded, ["Código", "Margen (%)", "Nota"], "margenes")
+            st.session_state.margenes_df = load_df("margenes", columns=["Código", "Margen (%)", "Nota"])
         st.session_state.margenes_df["Código"] = st.session_state.margenes_df["Código"].astype(str)
         search_term = st.text_input("🔎 Buscar margen", "", placeholder="Escribe nota o código...", key="search_margenes")
         df_full = st.session_state.margenes_df.copy().fillna("")
@@ -996,7 +970,9 @@ with tab3:
                 gastos_venta_pct = max(0.0, min(gastos_venta_pct, 95.0))
 
                 if utilidad > 0:
-                    total_pct = max(0.0, min(utilidad + gastos_venta_pct, 95.0))
+                    # Gross-up SOLO con el margen objetivo (sin sumar el % gasto variable)
+                    # para que la columna "Utilidad" muestre el % configurado limpio
+                    total_pct = max(0.0, min(utilidad, 95.0))
                     precio_neto_factor = costo_sub_neto / (1 - total_pct / 100)
                     precio_neto_final = precio_neto_factor + costo_insumos + costo_modmoi
                     precio_bruto_temp = precio_neto_final * 1.19
@@ -1016,9 +992,11 @@ with tab3:
                     precio_kg = ""
                     real_pct_str = ""
 
-                gastos_venta_monto = round(precio_neto_final * gastos_venta_pct / 100, 2) if gastos_venta_pct > 0 else 0.0
+                # Gasto de Venta Variable ahora se calcula sobre el PRECIO BRUTO (Transbank cobra sobre lo que paga el cliente)
+                gastos_venta_monto = round(precio_bruto * gastos_venta_pct / 100, 2) if gastos_venta_pct > 0 else 0.0
                 costo_total_sub = round(costo_sub_neto + costo_insumos + costo_modmoi, 2)
                 precio_venta_neto_calc = round(precio_bruto / 1.19, 2) if utilidad > 0 else 0
+                # Utilidad Neta = lo que realmente queda después de pagar la comisión sobre el bruto
                 utilidad_neta = round(precio_venta_neto_calc - costo_total_sub - gastos_venta_monto, 2) if utilidad > 0 else ""
                 resultados.append({
                     "N°": int(row["N°"]),
