@@ -382,7 +382,7 @@ with tab2:
                 }
             )
 
-        with st.expander("📋 Ver tabla de códigos disponibles (Costos de Venta)"):
+        with st.expander("📋 Ver tabla de códigos disponibles (Gastos de Venta Variable)"):
             ref_gv_df = st.session_state.gastos_venta_df[["Código", "Costo %", "Descripción"]].copy()
             ref_gv_df["Costo %"] = pd.to_numeric(ref_gv_df["Costo %"], errors="coerce")
             ref_gv_df = ref_gv_df.sort_values("Código").reset_index(drop=True)
@@ -432,7 +432,7 @@ with tab2:
                 "Producto": st.column_config.TextColumn(width="large"),
                 "Insumos": st.column_config.TextColumn(width="auto"),
                 "MOD y MOI": st.column_config.TextColumn(width="auto"),
-                "Gastos Venta Variable": st.column_config.TextColumn(width="auto", help="Código(s) de la tabla Costos de Venta, separados por espacio"),
+                "Gastos Venta Variable": st.column_config.TextColumn(width="auto", help="Código(s) de la tabla Gastos de Venta Variable (Costos), separados por espacio"),
                 "Seleccionar": st.column_config.CheckboxColumn("Seleccionar", default=False, width="small")
             },
             hide_index=True,
@@ -491,7 +491,7 @@ with tab2:
     # ===================== COSTOS =====================
     with subtab3:
         st.subheader("📦 Costos")
-        cost_sub1, cost_sub2, cost_sub3 = st.tabs(["Insumos", "MOD y MOI", "Costos de Venta"])
+        cost_sub1, cost_sub2, cost_sub3 = st.tabs(["Insumos", "MOD y MOI", "Gastos de Venta Variable"])
         with cost_sub1:
             st.subheader("Insumos")
             if "insumos_df" not in st.session_state:
@@ -672,13 +672,13 @@ with tab2:
             if st.session_state.pop("_toast_del_modmoi", False):
                 st.toast("🗑️ MOD/MOI eliminado correctamente", icon="🗑️")
         with cost_sub3:
-            st.subheader("Costos de Venta")
-            st.caption("Porcentajes que se aplican sobre el precio final con IVA (ej: comisión Transbank). Se referencian por código desde Backend Precios.")
+            st.subheader("Gastos de Venta Variable")
+            st.caption("Costos porcentuales sobre el precio de venta (ej: comisión por uso de Transbank). Se referencian por código desde Backend Precios.")
             if "gastos_venta_df" not in st.session_state:
                 df = load_df("gastos_venta", columns=["Código", "Costo %", "Descripción"])
                 df["Código"] = df["Código"].astype(str)
                 st.session_state.gastos_venta_df = df
-            search_term = st.text_input("🔎 Buscar costo de venta", "", placeholder="Escribe descripción o código...", key="search_gastos_venta")
+            search_term = st.text_input("🔎 Buscar gasto de venta", "", placeholder="Escribe descripción o código...", key="search_gastos_venta")
             df_full = st.session_state.gastos_venta_df.copy().fillna("")
             df_to_show = df_full
             if search_term and search_term.strip():
@@ -691,21 +691,21 @@ with tab2:
             df_to_show["Descripción"] = df_to_show["Descripción"].astype(str)
             df_to_show["Costo %"] = pd.to_numeric(df_to_show["Costo %"], errors="coerce").fillna(0.0)
             df_to_show["Seleccionar"] = False
-            edit_gastos_venta = st.toggle("Desbloquear edición de Costos de Venta", value=False, key="toggle_gastos_venta")
-            if st.button("➕ Agregar nuevo costo de venta", key="add_gastos_venta"):
+            edit_gastos_venta = st.toggle("Desbloquear edición de Gastos de Venta Variable", value=False, key="toggle_gastos_venta")
+            if st.button("➕ Agregar nuevo gasto de venta", key="add_gastos_venta"):
                 st.session_state.show_add_gastos_venta = True
             if st.session_state.get("show_add_gastos_venta", False):
                 with st.form("form_add_gastos_venta"):
-                    st.write("**Nuevo Costo de Venta**")
+                    st.write("**Nuevo Gasto de Venta Variable**")
                     new_data = {}
                     new_data["Código"] = st.text_input("Código", "")
-                    new_data["Costo %"] = st.text_input("Costo % (ej: 1.3 = 1.3%)", "")
+                    new_data["Costo %"] = st.text_input("Costo % (ej: 3.5 = 3.5%)", "")
                     new_data["Descripción"] = st.text_input("Descripción", "")
                     if st.form_submit_button("Guardar nuevo"):
                         new_row = pd.DataFrame([new_data])
                         st.session_state.gastos_venta_df = pd.concat([st.session_state.gastos_venta_df, new_row], ignore_index=True)
                         save_df(st.session_state.gastos_venta_df, "gastos_venta")
-                        st.success("Costo de Venta agregado")
+                        st.success("Gasto de Venta Variable agregado")
                         st.session_state.show_add_gastos_venta = False
                         st.rerun()
             edited = st.data_editor(
@@ -969,38 +969,29 @@ with tab3:
                 gastos_venta_pct = get_additional_costs(gastos_venta_cod, gastos_venta_df, "Costo %")
                 gastos_venta_pct = max(0.0, min(gastos_venta_pct, 95.0))
 
-                costo_total = costo_sub_neto + costo_insumos + costo_modmoi
-
                 if utilidad > 0:
-                    if gastos_venta_pct > 0:
-                        # Nueva fórmula: protege el margen real después de la comisión sobre el bruto con IVA
-                        comision_efectiva = gastos_venta_pct * 1.19 / 100
-                        denominador = 1 - (utilidad / 100) - comision_efectiva
-                        precio_neto_final = costo_total / denominador
-                    else:
-                        # Sin costo de venta % → cálculo clásico de margen
-                        precio_neto_final = costo_total / (1 - (utilidad / 100))
-
+                    total_pct = max(0.0, min(utilidad + gastos_venta_pct, 95.0))
+                    precio_neto_factor = costo_sub_neto / (1 - total_pct / 100)
+                    precio_neto_final = precio_neto_factor + costo_insumos + costo_modmoi
                     precio_bruto_temp = precio_neto_final * 1.19
                     precio_bruto = math.ceil(precio_bruto_temp / 50) * 50
                     utilidad_str = f"{utilidad:.1f}%"
                     precio_kg = round(precio_bruto / sub_factor, 2) if sub_factor > 0 else 0
                     real_pct_str = f"{round(((precio_neto_final - costo_sub_neto) / precio_neto_final * 100), 1)}%"
                 else:
-                    # SIN UTILIDAD: precio mínimo = costo total + aplicar % de venta si existe
+                    base_sin_utilidad = costo_sub_neto + costo_insumos + costo_modmoi
                     if gastos_venta_pct > 0:
-                        precio_neto_final = costo_total / (1 - gastos_venta_pct / 100)
+                        precio_neto_final = base_sin_utilidad / (1 - gastos_venta_pct / 100)
                     else:
-                        precio_neto_final = costo_total
+                        precio_neto_final = base_sin_utilidad
                     precio_bruto_temp = precio_neto_final * 1.19
                     precio_bruto = math.ceil(precio_bruto_temp / 50) * 50
                     utilidad_str = "SIN UTILIDAD"
                     precio_kg = ""
                     real_pct_str = ""
 
-                # Monto real de la comisión (siempre sobre el Precio Bruto final)
-                gastos_venta_monto = round(precio_bruto * gastos_venta_pct / 100, 2) if gastos_venta_pct > 0 else 0.0
-                costo_total_sub = round(costo_total, 2)
+                gastos_venta_monto = round(precio_neto_final * gastos_venta_pct / 100, 2) if gastos_venta_pct > 0 else 0.0
+                costo_total_sub = round(costo_sub_neto + costo_insumos + costo_modmoi, 2)
                 precio_venta_neto_calc = round(precio_bruto / 1.19, 2) if utilidad > 0 else 0
                 utilidad_neta = round(precio_venta_neto_calc - costo_total_sub - gastos_venta_monto, 2) if utilidad > 0 else ""
                 resultados.append({
