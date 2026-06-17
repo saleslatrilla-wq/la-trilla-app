@@ -7,7 +7,6 @@ import math
 st.set_page_config(page_title="Precios App", layout="wide", initial_sidebar_state="collapsed")
 st.title("📊 Automatizador de Precios")
 
-# ===================== CONEXIÓN A GOOGLE SHEETS =====================
 spreadsheet = st.session_state.google_spreadsheet
 
 def normalize_numeric_string(val):
@@ -102,7 +101,6 @@ def load_reception():
 
 tab1, tab2, tab3 = st.tabs(["📥 Recepción", "⚙️ Configuración", "💰 Precios de Venta"])
 
-# ==================================== PESTAÑA 1: RECEPCIÓN ====================================
 with tab1:
     st.subheader("Datos de Recepción")
     if "reception_df" not in st.session_state:
@@ -214,7 +212,6 @@ with tab1:
                  use_container_width=True, hide_index=True,
                  column_config={col: st.column_config.TextColumn(width="auto") for col in df_show.columns})
 
-# ==================================== PESTAÑA 2: CONFIGURACIÓN ====================================
 with tab2:
     st.subheader("⚙️ Configuración")
     subtab1, subtab2, subtab3, subtab4 = st.tabs(["📋 Identificador", "🔧 Backend Precios", "📦 Costos", "📏 Márgenes"])
@@ -821,7 +818,6 @@ with tab2:
         if st.session_state.pop("_toast_del_margenes", False):
             st.toast("🗑️ Margen eliminado correctamente", icon="🗑️")
 
-# ==================================== PESTAÑA 3: PRECIOS DE VENTA ====================================
 with tab3:
     st.subheader("💰 Precios de Venta")
     if "reception_df" not in st.session_state:
@@ -873,11 +869,11 @@ with tab3:
                     "Subproducto": "No encontrado",
                     "Costo Factor": 0,
                     "Insumos + MOD y MOI": 0,
-                    "Costos de Venta": 0,
                     "Costo Neto Total": round(costo_unitario * cantidad, 2),
-                    "Utilidad": "SIN UTILIDAD",
+                    "Utilidad": 0,
                     "Utilidad Neta": "",
                     "IVA": 0,
+                    "Costos de Venta": 0,
                     "Precio Venta Neto": 0,
                     "Precio Venta Bruto": "",
                     "Precio KG": ""
@@ -935,7 +931,6 @@ with tab3:
 
                     precio_bruto_temp = precio_neto_final * 1.19
                     precio_bruto = math.ceil(precio_bruto_temp)
-                    utilidad_str = f"{utilidad:.1f}%"
                     precio_kg = round(precio_bruto / sub_factor, 2) if sub_factor > 0 else 0
                 else:
                     if gastos_venta_pct > 0:
@@ -944,7 +939,6 @@ with tab3:
                         precio_neto_final = costo_total
                     precio_bruto_temp = precio_neto_final * 1.19
                     precio_bruto = math.ceil(precio_bruto_temp)
-                    utilidad_str = "SIN UTILIDAD"
                     precio_kg = ""
 
                 costos_venta_monto = round(precio_bruto * gastos_venta_pct / 100, 2) if gastos_venta_pct > 0 else 0.0
@@ -952,6 +946,9 @@ with tab3:
                 precio_venta_neto_calc = round(precio_bruto / 1.19, 2) if utilidad > 0 else 0
                 iva_monto = round(precio_bruto * 0.19, 2) if utilidad > 0 else 0
                 utilidad_neta = round(precio_venta_neto_calc - costo_total_sub - costos_venta_monto, 2) if utilidad > 0 else ""
+                
+                # Margen real antes de Costos de Venta (sobre Costo Neto Total)
+                margen_real_antes_venta = round(((utilidad_neta + costos_venta_monto) / costo_total_sub * 100), 1) if costo_total_sub > 0 else 0
 
                 resultados.append({
                     "N°": int(row["N°"]),
@@ -961,7 +958,7 @@ with tab3:
                     "Costo Factor": round(costo_sub_neto, 2),
                     "Insumos + MOD y MOI": round(costo_insumos + costo_modmoi, 2),
                     "Costo Neto Total": costo_total_sub,
-                    "Utilidad": utilidad_str,
+                    "Utilidad": margen_real_antes_venta,
                     "Utilidad Neta": utilidad_neta,
                     "IVA": iva_monto,
                     "Costos de Venta": costos_venta_monto,
@@ -971,10 +968,10 @@ with tab3:
                 })
 
         df_final = pd.DataFrame(resultados)
-        for col in ["Costo Factor", "Insumos + MOD y MOI", "Costo Neto Total", "Precio Venta Neto", "Costos de Venta", "IVA"]:
+        for col in ["Costo Factor", "Insumos + MOD y MOI", "Costo Neto Total", "Precio Venta Neto", "Costos de Venta", "IVA", "Utilidad Neta"]:
             if col in df_final.columns:
                 df_final[col] = df_final[col].apply(lambda x: f"${x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-        for col in ["Precio Venta Bruto", "Precio KG", "Utilidad Neta"]:
+        for col in ["Precio Venta Bruto", "Precio KG"]:
             if col in df_final.columns:
                 df_final[col] = df_final[col].apply(lambda x: f"${int(round(x)):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".") if x != "" and x != 0 else "")
         return df_final
@@ -1000,6 +997,9 @@ with tab3:
             if util_str == "SIN UTILIDAD":
                 return [f'background-color: {bg_color}'] * 12
             try:
+                # Color para Utilidad Neta (azul)
+                # Color para IVA (naranja)
+                # Color para Costos de Venta (rojo)
                 return [
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
@@ -1008,9 +1008,9 @@ with tab3:
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
-                    f'background-color: {bg_color}',
-                    f'color: #ff8c00; background-color: {bg_color}',  # IVA naranja
-                    f'color: #cc0000; background-color: {bg_color}',  # Costos de Venta rojo
+                    f'color: #1a86c7; background-color: {bg_color}',  # Utilidad Neta - Azul
+                    f'color: #ff8c00; background-color: {bg_color}',  # IVA - Naranja
+                    f'color: #cc0000; background-color: {bg_color}',  # Costos de Venta - Rojo
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}'
                 ]
