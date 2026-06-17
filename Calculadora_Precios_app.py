@@ -870,7 +870,8 @@ with tab3:
                     "Costo Factor": 0,
                     "Insumos + MOD y MOI": 0,
                     "Costo Neto Total": round(costo_unitario * cantidad, 2),
-                    "Utilidad": 0,
+                    "Utilidad": 0.0,
+                    "Margen Configurado": 0.0,
                     "Utilidad Neta": "",
                     "IVA": 0,
                     "Costos de Venta": 0,
@@ -947,11 +948,11 @@ with tab3:
                 iva_monto = round(precio_bruto * 0.19, 2) if utilidad > 0 else 0
                 utilidad_neta = round(precio_venta_neto_calc - costo_total_sub - costos_venta_monto, 2) if utilidad > 0 else ""
                 
-                # Margen real antes de Costos de Venta (sobre Costo Neto Total)
-                if utilidad > 0 and costo_total_sub > 0:
-                    margen_real_antes_venta = round(((utilidad_neta + costos_venta_monto) / costo_total_sub * 100), 1)
+                # Margen Neto Real que realmente percibe el usuario
+                if precio_venta_neto_calc > 0:
+                    margen_neto_real = round((utilidad_neta / precio_venta_neto_calc * 100), 1)
                 else:
-                    margen_real_antes_venta = 0
+                    margen_neto_real = 0.0
 
                 resultados.append({
                     "N°": int(row["N°"]),
@@ -961,7 +962,8 @@ with tab3:
                     "Costo Factor": round(costo_sub_neto, 2),
                     "Insumos + MOD y MOI": round(costo_insumos + costo_modmoi, 2),
                     "Costo Neto Total": costo_total_sub,
-                    "Utilidad": margen_real_antes_venta,
+                    "Utilidad": margen_neto_real,
+                    "Margen Configurado": utilidad,
                     "Utilidad Neta": utilidad_neta,
                     "IVA": iva_monto,
                     "Costos de Venta": costos_venta_monto,
@@ -972,7 +974,6 @@ with tab3:
 
         df_final = pd.DataFrame(resultados)
         
-        # Formateo robusto
         def format_currency(x):
             if pd.isna(x) or x == "" or x == 0:
                 return ""
@@ -987,7 +988,7 @@ with tab3:
         
         for col in ["Precio Venta Bruto", "Precio KG"]:
             if col in df_final.columns:
-                df_final[col] = df_final[col].apply(lambda x: f"${int(round(float(x))):,}".replace(",", ".") if x != "" and x != 0 else "" if pd.notna(x) else "")
+                df_final[col] = df_final[col].apply(lambda x: f"${int(round(float(x))):,}".replace(",", ".") if pd.notna(x) and x != "" and x != 0 else "")
         
         return df_final
 
@@ -1001,17 +1002,19 @@ with tab3:
         df_display = st.session_state.df_precios[[
             "N°", "Lote", "Subproducto", 
             "Costo Factor", "Insumos + MOD y MOI", "Costo Neto Total", 
-            "Utilidad", "Utilidad Neta", "IVA", "Costos de Venta", 
+            "Utilidad", "Margen Configurado", "Utilidad Neta", "IVA", "Costos de Venta", 
             "Precio Venta Bruto", "Precio KG"
         ]].copy()
 
         def style_row(row):
             n = int(row["N°"])
             bg_color = "#e5e5e5" if n % 2 == 0 else "white"
-            util_str = str(row["Utilidad"]).strip()
-            if util_str == "SIN UTILIDAD":
-                return [f'background-color: {bg_color}'] * 12
             try:
+                margen_real = float(row["Utilidad"]) if row["Utilidad"] != "" else 0
+                margen_config = float(row["Margen Configurado"]) if row["Margen Configurado"] != "" else 0
+                
+                color_utilidad = '#00aa00' if margen_real >= margen_config else '#cc0000'
+                
                 return [
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
@@ -1020,6 +1023,8 @@ with tab3:
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
+                    f'color: {color_utilidad}; background-color: {bg_color}; font-weight: bold',  # Utilidad (margen neto real)
+                    f'background-color: {bg_color}',
                     f'color: #1a86c7; background-color: {bg_color}',  # Utilidad Neta - Azul
                     f'color: #ff8c00; background-color: {bg_color}',  # IVA - Naranja
                     f'color: #cc0000; background-color: {bg_color}',  # Costos de Venta - Rojo
@@ -1027,7 +1032,7 @@ with tab3:
                     f'background-color: {bg_color}'
                 ]
             except:
-                return [f'background-color: {bg_color}'] * 12
+                return [f'background-color: {bg_color}'] * 14
 
         styled_df = df_display.style.apply(style_row, axis=1)
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
