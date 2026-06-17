@@ -948,7 +948,10 @@ with tab3:
                 utilidad_neta = round(precio_venta_neto_calc - costo_total_sub - costos_venta_monto, 2) if utilidad > 0 else ""
                 
                 # Margen real antes de Costos de Venta (sobre Costo Neto Total)
-                margen_real_antes_venta = round(((utilidad_neta + costos_venta_monto) / costo_total_sub * 100), 1) if costo_total_sub > 0 else 0
+                if utilidad > 0 and costo_total_sub > 0:
+                    margen_real_antes_venta = round(((utilidad_neta + costos_venta_monto) / costo_total_sub * 100), 1)
+                else:
+                    margen_real_antes_venta = 0
 
                 resultados.append({
                     "N°": int(row["N°"]),
@@ -997,9 +1000,6 @@ with tab3:
             if util_str == "SIN UTILIDAD":
                 return [f'background-color: {bg_color}'] * 12
             try:
-                # Color para Utilidad Neta (azul)
-                # Color para IVA (naranja)
-                # Color para Costos de Venta (rojo)
                 return [
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
