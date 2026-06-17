@@ -971,12 +971,24 @@ with tab3:
                 })
 
         df_final = pd.DataFrame(resultados)
+        
+        # Formateo robusto
+        def format_currency(x):
+            if pd.isna(x) or x == "" or x == 0:
+                return ""
+            try:
+                return f"${float(x):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            except:
+                return str(x)
+        
         for col in ["Costo Factor", "Insumos + MOD y MOI", "Costo Neto Total", "Precio Venta Neto", "Costos de Venta", "IVA", "Utilidad Neta"]:
             if col in df_final.columns:
-                df_final[col] = df_final[col].apply(lambda x: f"${x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+                df_final[col] = df_final[col].apply(format_currency)
+        
         for col in ["Precio Venta Bruto", "Precio KG"]:
             if col in df_final.columns:
-                df_final[col] = df_final[col].apply(lambda x: f"${int(round(x)):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".") if x != "" and x != 0 else "")
+                df_final[col] = df_final[col].apply(lambda x: f"${int(round(float(x))):,}".replace(",", ".") if x != "" and x != 0 else "" if pd.notna(x) else "")
+        
         return df_final
 
     if st.button("🔄 Calcular Precios de Venta", type="primary"):
