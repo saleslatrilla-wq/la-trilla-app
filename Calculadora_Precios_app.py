@@ -331,9 +331,13 @@ with tab2:
         st.subheader("🔧 Backend Precios")
         st.caption("Utilidad se calcula automáticamente si existe COD en Márgenes.")
         if "backend_df" not in st.session_state:
-            st.session_state.backend_df = load_df("backend_precios", columns=["COD", "Producto", "Insumos", "MOD y MOI"])
+            st.session_state.backend_df = load_df("backend_precios", columns=["COD", "Producto", "Insumos", "MOD y MOI", "Gastos Venta Variable"])
         if "margenes_df" not in st.session_state:
             st.session_state.margenes_df = load_df("margenes", columns=["Código", "Margen (%)", "Nota"])
+        if "gastos_venta_df" not in st.session_state:
+            df_gv_init = load_df("gastos_venta", columns=["Código", "Costo %", "Descripción"])
+            df_gv_init["Código"] = df_gv_init["Código"].astype(str)
+            st.session_state.gastos_venta_df = df_gv_init
 
         def calcular_utilidad(cod, margenes_df):
             if pd.isna(cod) or str(cod).strip() == "":
@@ -347,7 +351,7 @@ with tab2:
             df_full["Utilidad"] = 0.0
         df_display = df_full.copy()
         df_display["Utilidad"] = df_display["COD"].apply(lambda x: calcular_utilidad(x, st.session_state.margenes_df))
-        cols_order = ["COD", "Utilidad", "Producto", "Insumos", "MOD y MOI"]
+        cols_order = ["COD", "Utilidad", "Producto", "Insumos", "MOD y MOI", "Gastos Venta Variable"]
         df_display = df_display[cols_order]
 
         search_term = st.text_input("🔎 Buscar producto", "", placeholder="Escribe nombre del producto...", key="search_backend")
@@ -375,6 +379,21 @@ with tab2:
                     "Código": st.column_config.TextColumn("COD", width="small"),
                     "Margen (%)": st.column_config.NumberColumn("Margen (%)", format="%.1f", width="small"),
                     "Nota": st.column_config.TextColumn("Descripción del margen", width="large"),
+                }
+            )
+
+        with st.expander("📋 Ver tabla de códigos disponibles (Gastos de Venta Variable)"):
+            ref_gv_df = st.session_state.gastos_venta_df[["Código", "Costo %", "Descripción"]].copy()
+            ref_gv_df["Costo %"] = pd.to_numeric(ref_gv_df["Costo %"], errors="coerce")
+            ref_gv_df = ref_gv_df.sort_values("Código").reset_index(drop=True)
+            st.dataframe(
+                ref_gv_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Código": st.column_config.TextColumn("COD", width="small"),
+                    "Costo %": st.column_config.NumberColumn("Costo %", format="%.2f", width="small"),
+                    "Descripción": st.column_config.TextColumn(width="large"),
                 }
             )
 
@@ -413,6 +432,7 @@ with tab2:
                 "Producto": st.column_config.TextColumn(width="large"),
                 "Insumos": st.column_config.TextColumn(width="auto"),
                 "MOD y MOI": st.column_config.TextColumn(width="auto"),
+                "Gastos Venta Variable": st.column_config.TextColumn(width="auto", help="Código(s) de la tabla Gastos de Venta Variable (Costos), separados por espacio"),
                 "Seleccionar": st.column_config.CheckboxColumn("Seleccionar", default=False, width="small")
             },
             hide_index=True,
@@ -420,7 +440,7 @@ with tab2:
         )
         # BUG FIX: Guardar solo con botón explícito (no en cada render).
         # Usar columnas reales del backend (sin "Utilidad" que es calculada).
-        cols_to_save_backend = ["COD", "Producto", "Insumos", "MOD y MOI"]
+        cols_to_save_backend = ["COD", "Producto", "Insumos", "MOD y MOI", "Gastos Venta Variable"]
         if edit_backend:
             if st.button("💾 Guardar cambios Backend", type="primary", key="save_backend"):
                 # Leer los cambios reales desde el estado interno del widget
@@ -471,7 +491,7 @@ with tab2:
     # ===================== COSTOS =====================
     with subtab3:
         st.subheader("📦 Costos")
-        cost_sub1, cost_sub2 = st.tabs(["Insumos", "MOD y MOI"])
+        cost_sub1, cost_sub2, cost_sub3 = st.tabs(["Insumos", "MOD y MOI", "Gastos de Venta Variable"])
         with cost_sub1:
             st.subheader("Insumos")
             if "insumos_df" not in st.session_state:
@@ -651,6 +671,103 @@ with tab2:
                     st.rerun()
             if st.session_state.pop("_toast_del_modmoi", False):
                 st.toast("🗑️ MOD/MOI eliminado correctamente", icon="🗑️")
+        with cost_sub3:
+            st.subheader("Gastos de Venta Variable")
+            st.caption("Costos porcentuales sobre el precio de venta (ej: comisión por uso de Transbank). Se referencian por código desde Backend Precios.")
+            if "gastos_venta_df" not in st.session_state:
+                df = load_df("gastos_venta", columns=["Código", "Costo %", "Descripción"])
+                df["Código"] = df["Código"].astype(str)
+                st.session_state.gastos_venta_df = df
+            search_term = st.text_input("🔎 Buscar gasto de venta", "", placeholder="Escribe descripción o código...", key="search_gastos_venta")
+            df_full = st.session_state.gastos_venta_df.copy().fillna("")
+            df_to_show = df_full
+            if search_term and search_term.strip():
+                search = search_term.strip()
+                df_to_show = df_full[df_full["Descripción"].astype(str).str.contains(search, case=False, na=False) |
+                                    df_full["Código"].astype(str).str.contains(search, case=False, na=False)]
+            original_indices_gastos_venta = df_to_show.index.tolist()
+            df_to_show = df_to_show.reset_index(drop=True)
+            df_to_show["Código"] = df_to_show["Código"].astype(str)
+            df_to_show["Descripción"] = df_to_show["Descripción"].astype(str)
+            df_to_show["Costo %"] = pd.to_numeric(df_to_show["Costo %"], errors="coerce").fillna(0.0)
+            df_to_show["Seleccionar"] = False
+            edit_gastos_venta = st.toggle("Desbloquear edición de Gastos de Venta Variable", value=False, key="toggle_gastos_venta")
+            if st.button("➕ Agregar nuevo gasto de venta", key="add_gastos_venta"):
+                st.session_state.show_add_gastos_venta = True
+            if st.session_state.get("show_add_gastos_venta", False):
+                with st.form("form_add_gastos_venta"):
+                    st.write("**Nuevo Gasto de Venta Variable**")
+                    new_data = {}
+                    new_data["Código"] = st.text_input("Código", "")
+                    new_data["Costo %"] = st.text_input("Costo % (ej: 3.5 = 3.5%)", "")
+                    new_data["Descripción"] = st.text_input("Descripción", "")
+                    if st.form_submit_button("Guardar nuevo"):
+                        new_row = pd.DataFrame([new_data])
+                        st.session_state.gastos_venta_df = pd.concat([st.session_state.gastos_venta_df, new_row], ignore_index=True)
+                        save_df(st.session_state.gastos_venta_df, "gastos_venta")
+                        st.success("Gasto de Venta Variable agregado")
+                        st.session_state.show_add_gastos_venta = False
+                        st.rerun()
+            edited = st.data_editor(
+                df_to_show,
+                use_container_width=True,
+                num_rows="fixed",
+                disabled=not edit_gastos_venta,
+                column_config={
+                    "Código": st.column_config.TextColumn(width="auto"),
+                    "Costo %": st.column_config.NumberColumn(
+                        "Costo %",
+                        width="auto",
+                        format="%.2f",
+                        help="Ingresa el valor como número (ej: 3.5 = 3.5%)"
+                    ),
+                    "Descripción": st.column_config.TextColumn(width="auto"),
+                    "Seleccionar": st.column_config.CheckboxColumn("Seleccionar", default=False, width="small")
+                },
+                hide_index=True,
+                key="gastos_venta_editor"
+            )
+            if edit_gastos_venta:
+                if st.button("💾 Guardar cambios Gastos de Venta Variable", type="primary", key="save_gastos_venta"):
+                    editor_state = st.session_state.get("gastos_venta_editor", {})
+                    edited_rows = editor_state.get("edited_rows", {})
+                    cols_gv = [c for c in df_to_show.columns if c != "Seleccionar"]
+                    for str_i, changes in edited_rows.items():
+                        row_i = int(str_i)
+                        if row_i < len(original_indices_gastos_venta):
+                            orig_idx = original_indices_gastos_venta[row_i]
+                            for col, new_val in changes.items():
+                                if col in cols_gv:
+                                    st.session_state.gastos_venta_df.at[orig_idx, col] = new_val
+                    save_df(st.session_state.gastos_venta_df, "gastos_venta")
+                    st.session_state["_toast_gastos_venta"] = True
+                    st.rerun()
+            if st.session_state.pop("_toast_gastos_venta", False):
+                st.toast("✅ Gastos de Venta Variable guardado correctamente", icon="✅")
+            if st.button("🗑️ Eliminar seleccionados", type="secondary", key="del_btn_gastos_venta"):
+                selected_mask = edited["Seleccionar"] == True
+                if selected_mask.any():
+                    selected_orig = [original_indices_gastos_venta[i] for i, v in enumerate(selected_mask) if v]
+                    st.session_state["confirm_del_gastos_venta"] = True
+                    st.session_state["indices_to_del_gastos_venta"] = selected_orig
+                else:
+                    st.warning("No hay filas seleccionadas")
+            if st.session_state.get("confirm_del_gastos_venta", False):
+                st.warning(f"¿Estás seguro de eliminar permanentemente **{len(st.session_state['indices_to_del_gastos_venta'])} fila(s)** de la base de datos?")
+                col1, col2 = st.columns(2)
+                if col1.button("Sí, eliminar", key="yes_del_gastos_venta"):
+                    st.session_state.gastos_venta_df = st.session_state.gastos_venta_df.drop(st.session_state["indices_to_del_gastos_venta"]).reset_index(drop=True)
+                    save_df(st.session_state.gastos_venta_df, "gastos_venta")
+                    del st.session_state["confirm_del_gastos_venta"]
+                    del st.session_state["indices_to_del_gastos_venta"]
+                    st.session_state["_toast_del_gastos_venta"] = True
+                    st.rerun()
+                if col2.button("Cancelar", key="cancel_del_gastos_venta"):
+                    del st.session_state["confirm_del_gastos_venta"]
+                    del st.session_state["indices_to_del_gastos_venta"]
+                    st.rerun()
+            if st.session_state.pop("_toast_del_gastos_venta", False):
+                st.toast("🗑️ Gasto de Venta Variable eliminado correctamente", icon="🗑️")
 
     # ===================== MÁRGENES =====================
     with subtab4:
@@ -762,6 +879,7 @@ with tab3:
     insumos_df = st.session_state.get("insumos_df", pd.DataFrame())
     modmoi_df = st.session_state.get("modmoi_df", pd.DataFrame())
     margenes_df = st.session_state.get("margenes_df", pd.DataFrame())
+    gastos_venta_df = st.session_state.get("gastos_venta_df", pd.DataFrame())
 
     def safe_float(val):
         if pd.isna(val) or str(val).strip() in ["", "nan", "None", "No Encontrado"]:
@@ -782,7 +900,7 @@ with tab3:
                 total += safe_float(match.iloc[0][col_costo])
         return total
 
-    def calcular_precios_venta(reception_df, bdb_df, backend_df, insumos_df, modmoi_df, margenes_df):
+    def calcular_precios_venta(reception_df, bdb_df, backend_df, insumos_df, modmoi_df, margenes_df, gastos_venta_df):
         resultados = []
         for _, row in reception_df.iterrows():
             producto = str(row["Producto"]).strip()
@@ -801,6 +919,7 @@ with tab3:
                     "Subproducto": "No encontrado",
                     "Costo Factor": 0,
                     "Insumos + MOD y MOI": 0,
+                    "Gastos Venta Variable": 0,
                     "Costo Neto Total": round(costo_unitario * cantidad, 2),
                     "Utilidad": "SIN UTILIDAD",
                     "Utilidad Neta": "",
@@ -838,16 +957,21 @@ with tab3:
                     utilidad = safe_float(calcular_utilidad(cod, margenes_df))
                     insumos_cod = backend_match.iloc[0].get("Insumos", "")
                     modmoi_cod = backend_match.iloc[0].get("MOD y MOI", "")
+                    gastos_venta_cod = backend_match.iloc[0].get("Gastos Venta Variable", "")
                 else:
                     utilidad = 0.0
                     insumos_cod = ""
                     modmoi_cod = ""
+                    gastos_venta_cod = ""
 
                 costo_insumos = get_additional_costs(insumos_cod, insumos_df, "Costo Neto Unitario")
                 costo_modmoi = get_additional_costs(modmoi_cod, modmoi_df, "Costo Neto")
+                gastos_venta_pct = get_additional_costs(gastos_venta_cod, gastos_venta_df, "Costo %")
+                gastos_venta_pct = max(0.0, min(gastos_venta_pct, 95.0))
 
                 if utilidad > 0:
-                    precio_neto_factor = costo_sub_neto / (1 - utilidad / 100)
+                    total_pct = max(0.0, min(utilidad + gastos_venta_pct, 95.0))
+                    precio_neto_factor = costo_sub_neto / (1 - total_pct / 100)
                     precio_neto_final = precio_neto_factor + costo_insumos + costo_modmoi
                     precio_bruto_temp = precio_neto_final * 1.19
                     precio_bruto = math.ceil(precio_bruto_temp / 50) * 50
@@ -855,16 +979,21 @@ with tab3:
                     precio_kg = round(precio_bruto / sub_factor, 2) if sub_factor > 0 else 0
                     real_pct_str = f"{round(((precio_neto_final - costo_sub_neto) / precio_neto_final * 100), 1)}%"
                 else:
-                    precio_neto_final = costo_sub_neto + costo_insumos + costo_modmoi
+                    base_sin_utilidad = costo_sub_neto + costo_insumos + costo_modmoi
+                    if gastos_venta_pct > 0:
+                        precio_neto_final = base_sin_utilidad / (1 - gastos_venta_pct / 100)
+                    else:
+                        precio_neto_final = base_sin_utilidad
                     precio_bruto_temp = precio_neto_final * 1.19
                     precio_bruto = math.ceil(precio_bruto_temp / 50) * 50
                     utilidad_str = "SIN UTILIDAD"
                     precio_kg = ""
                     real_pct_str = ""
 
+                gastos_venta_monto = round(precio_neto_final * gastos_venta_pct / 100, 2) if gastos_venta_pct > 0 else 0.0
                 costo_total_sub = round(costo_sub_neto + costo_insumos + costo_modmoi, 2)
                 precio_venta_neto_calc = round(precio_bruto / 1.19, 2) if utilidad > 0 else 0
-                utilidad_neta = round(precio_venta_neto_calc - costo_total_sub, 2) if utilidad > 0 else ""
+                utilidad_neta = round(precio_venta_neto_calc - costo_total_sub - gastos_venta_monto, 2) if utilidad > 0 else ""
                 resultados.append({
                     "N°": int(row["N°"]),
                     "Lote": lote,
@@ -872,6 +1001,7 @@ with tab3:
                     "Subproducto": sub_name,
                     "Costo Factor": round(costo_sub_neto, 2),
                     "Insumos + MOD y MOI": round(costo_insumos + costo_modmoi, 2),
+                    "Gastos Venta Variable": gastos_venta_monto,
                     "Costo Neto Total": costo_total_sub,
                     "Utilidad": utilidad_str,
                     "Utilidad Neta": utilidad_neta,
@@ -882,7 +1012,7 @@ with tab3:
                 })
 
         df_final = pd.DataFrame(resultados)
-        for col in ["Costo Factor", "Insumos + MOD y MOI", "Costo Neto Total", "Precio Venta Neto"]:
+        for col in ["Costo Factor", "Insumos + MOD y MOI", "Gastos Venta Variable", "Costo Neto Total", "Precio Venta Neto"]:
             if col in df_final.columns:
                 df_final[col] = df_final[col].apply(lambda x: f"${x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
         for col in ["Precio Venta Bruto", "Precio KG", "Utilidad Neta"]:
@@ -892,24 +1022,25 @@ with tab3:
 
     if st.button("🔄 Calcular Precios de Venta", type="primary"):
         with st.spinner("Aplicando lógica completa usando SUB*_Factor..."):
-            df_final = calcular_precios_venta(reception_df, bdb_df, backend_df, insumos_df, modmoi_df, margenes_df)
+            df_final = calcular_precios_venta(reception_df, bdb_df, backend_df, insumos_df, modmoi_df, margenes_df, gastos_venta_df)
             st.session_state.df_precios = df_final
             st.success("✅ Precios calculados correctamente según la lógica del Excel")
 
     if "df_precios" in st.session_state:
-        df_display = st.session_state.df_precios[["N°", "Lote", "Subproducto", "Costo Factor", "Insumos + MOD y MOI", "Costo Neto Total", "Utilidad", "Utilidad Neta", "% Real", "Precio Venta Bruto", "Precio KG"]].copy()
+        df_display = st.session_state.df_precios[["N°", "Lote", "Subproducto", "Costo Factor", "Insumos + MOD y MOI", "Gastos Venta Variable", "Costo Neto Total", "Utilidad", "Utilidad Neta", "% Real", "Precio Venta Bruto", "Precio KG"]].copy()
 
         def style_row(row):
             n = int(row["N°"])
             bg_color = "#e5e5e5" if n % 2 == 0 else "white"
             util_str = str(row["Utilidad"]).strip()
             if util_str == "SIN UTILIDAD":
-                return [f'background-color: {bg_color}'] * 11
+                return [f'background-color: {bg_color}'] * 12
             try:
                 real_val = float(str(row["% Real"]).replace("%", ""))
                 util_val = float(str(util_str).replace("%", ""))
                 color_real = '#00cc00' if real_val >= util_val else '#ff4444'
                 return [
+                    f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
@@ -923,7 +1054,7 @@ with tab3:
                     f'background-color: {bg_color}'
                 ]
             except:
-                return [f'background-color: {bg_color}'] * 11
+                return [f'background-color: {bg_color}'] * 12
 
         styled_df = df_display.style.apply(style_row, axis=1)
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
