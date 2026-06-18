@@ -871,6 +871,7 @@ with tab3:
                     "Insumos + MOD y MOI": 0,
                     "Costo Neto Total": round(costo_unitario * cantidad, 2),
                     "Margen Real": 0.0,
+                    "Margen Configurado": 0.0,
                     "Utilidad Neta": "",
                     "IVA": 0,
                     "Costos de Venta": 0,
@@ -962,6 +963,7 @@ with tab3:
                     "Insumos + MOD y MOI": round(costo_insumos + costo_modmoi, 2),
                     "Costo Neto Total": costo_total_sub,
                     "Margen Real": margen_neto_real,
+                    "Margen Configurado": round(utilidad, 2),
                     "Utilidad Neta": utilidad_neta,
                     "IVA": iva_monto,
                     "Costos de Venta": costos_venta_monto,
@@ -1000,7 +1002,7 @@ with tab3:
         df_display = st.session_state.df_precios[[
             "N°", "Lote", "Subproducto", 
             "Costo Factor", "Insumos + MOD y MOI", "Costo Neto Total", 
-            "Margen Real", "Utilidad Neta", "IVA", "Costos de Venta", 
+            "Margen Real", "Margen Configurado", "Utilidad Neta", "IVA", "Costos de Venta", 
             "Precio Venta Bruto", "Precio KG"
         ]].copy()
 
@@ -1009,13 +1011,9 @@ with tab3:
             bg_color = "#e5e5e5" if n % 2 == 0 else "white"
             try:
                 margen_real = float(row["Margen Real"]) if row["Margen Real"] != "" else 0
-                # For color comparison we use the configured margin from backend (we store it in results as well if needed)
-                # For simplicity we compare against 40% as default target, or we can add the configured value
-                # Since user wants contrast vs configured, we keep simple logic: green if >= 40 (common target)
-                # Better: we can store configured margin per row if needed. For now use 40 as reference or make dynamic.
-                # To make it accurate, let's assume we compare to the value that was configured (we can add it to results)
-                # For this version, I'll use a simple approach: green if margen_real >= 40
-                color_margen = '#00aa00' if margen_real >= 40 else '#cc0000'
+                margen_config = float(row["Margen Configurado"]) if row["Margen Configurado"] != "" else 0
+                
+                color_margen = '#00aa00' if margen_real >= margen_config else '#cc0000'
                 
                 return [
                     f'background-color: {bg_color}',
@@ -1024,7 +1022,8 @@ with tab3:
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
-                    f'color: {color_margen}; background-color: {bg_color}',  # Margen Real
+                    f'color: {color_margen}; background-color: {bg_color}',  # Margen Real (colored)
+                    f'background-color: {bg_color}',
                     f'color: #1a86c7; background-color: {bg_color}',  # Utilidad Neta - Azul
                     f'color: #ff8c00; background-color: {bg_color}',  # IVA - Naranja
                     f'color: #cc0000; background-color: {bg_color}',  # Costos de Venta - Rojo
@@ -1032,7 +1031,7 @@ with tab3:
                     f'background-color: {bg_color}'
                 ]
             except:
-                return [f'background-color: {bg_color}'] * 12
+                return [f'background-color: {bg_color}'] * 13
 
         styled_df = df_display.style.apply(style_row, axis=1)
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
