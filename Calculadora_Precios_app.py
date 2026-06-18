@@ -112,10 +112,8 @@ def calcular_redondeo(precio_bruto, costo_total, comision_pct, margen_objetivo=4
     resto = precio_bruto % 50
 
     if resto <= 25:
-        # Intentar bajar
         candidato = precio_bruto - resto
     else:
-        # Subir
         candidato = precio_bruto + (50 - resto)
 
     # Si bajamos, verificar que no caiga el margen bajo el objetivo
@@ -127,7 +125,6 @@ def calcular_redondeo(precio_bruto, costo_total, comision_pct, margen_objetivo=4
             margen_cand = (utilidad_cand / precio_neto_cand * 100)
             
             if margen_cand < margen_objetivo:
-                # Mejor subir
                 candidato = precio_bruto + (50 - resto)
 
     return int(candidato)
@@ -966,7 +963,6 @@ with tab3:
 
                     precio_bruto_temp = precio_neto_final * 1.19
                     precio_bruto = math.ceil(precio_bruto_temp)
-                    precio_kg = round(precio_bruto / sub_factor, 2) if sub_factor > 0 else 0
                 else:
                     if gastos_venta_pct > 0:
                         precio_neto_final = costo_total / (1 - gastos_venta_pct / 100)
@@ -974,7 +970,6 @@ with tab3:
                         precio_neto_final = costo_total
                     precio_bruto_temp = precio_neto_final * 1.19
                     precio_bruto = math.ceil(precio_bruto_temp)
-                    precio_kg = ""
 
                 # === NUEVA LÓGICA DE REDONDEO ===
                 redondeo = calcular_redondeo(precio_bruto, costo_total, gastos_venta_pct, margen_objetivo=utilidad)
@@ -986,14 +981,8 @@ with tab3:
                 margen_real_red = round((utilidad_neta_red / precio_neto_red * 100), 2) if precio_neto_red > 0 else 0.0
                 iva_red = round(redondeo * 0.19, 2)
 
-                # Formateo
-                def format_currency(x):
-                    if pd.isna(x) or x == "" or x == 0:
-                        return ""
-                    try:
-                        return f"${float(x):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                    except:
-                        return str(x)
+                # Precio KG ahora se calcula sobre el precio redondeado
+                precio_kg_red = round(redondeo / sub_factor, 2) if sub_factor > 0 and redondeo > 0 else 0
 
                 resultados.append({
                     "N°": int(row["N°"]),
@@ -1011,7 +1000,7 @@ with tab3:
                     "Precio Venta Neto": round(precio_neto_final, 2),
                     "Precio Venta Bruto": precio_bruto if utilidad > 0 else "",
                     "Redondeo": redondeo if utilidad > 0 else "",
-                    "Precio KG": precio_kg if utilidad > 0 else ""
+                    "Precio KG": precio_kg_red if utilidad > 0 else ""
                 })
 
         df_final = pd.DataFrame(resultados)
@@ -1064,11 +1053,6 @@ with tab3:
                 margen_config = float(margen_config_str) if margen_config_str != "" else 0
                 
                 color_margen = '#00aa00' if margen_real >= margen_config else '#cc0000'
-                
-                # Column order:
-                # 0:N°, 1:Lote, 2:Subproducto, 3:Costo Factor, 4:Insumos+MOD, 5:Costo Neto Total,
-                # 6:Margen Configurado, 7:Margen Real, 8:Utilidad Neta, 9:IVA, 10:Costos de Venta,
-                # 11:Precio Venta Bruto, 12:Redondeo, 13:Precio KG
                 
                 return [
                     f'background-color: {bg_color}',                                    # 0 N°
