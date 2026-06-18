@@ -1001,7 +1001,7 @@ with tab3:
         with st.spinner("Aplicando lógica completa usando SUB*_Factor..."):
             df_final = calcular_precios_venta(reception_df, bdb_df, backend_df, insumos_df, modmoi_df, margenes_df, gastos_venta_df)
             st.session_state.df_precios = df_final
-            st.success("✅ Precios calculados correctamente según la lógica del Excel")
+            st.success("✅ Precios calculados")
 
     if "df_precios" in st.session_state:
         df_display = st.session_state.df_precios[[
