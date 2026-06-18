@@ -1023,20 +1023,25 @@ with tab3:
                 
                 color_margen = '#00aa00' if margen_real >= margen_config else '#cc0000'
                 
+                # Column order in df_display:
+                # 0:N°, 1:Lote, 2:Subproducto, 3:Costo Factor, 4:Insumos+MOD, 5:Costo Neto Total,
+                # 6:Margen Configurado, 7:Margen Real, 8:Utilidad Neta, 9:IVA, 10:Costos de Venta,
+                # 11:Precio Venta Bruto, 12:Precio KG
+                
                 return [
-                    f'background-color: {bg_color}',
-                    f'background-color: {bg_color}',
-                    f'background-color: {bg_color}',
-                    f'background-color: {bg_color}',
-                    f'background-color: {bg_color}',
-                    f'background-color: {bg_color}',
-                    f'background-color: {bg_color}',
-                    f'color: {color_margen}; background-color: {bg_color}',  # Margen Configurado
-                    f'color: {color_margen}; background-color: {bg_color}',  # Margen Real (colored)
-                    f'color: #1a86c7; background-color: {bg_color}',  # Utilidad Neta - Azul
-                    f'color: #ff8c00; background-color: {bg_color}',  # IVA - Naranja
-                    f'color: #cc0000; background-color: {bg_color}',  # Costos de Venta - Rojo
-                    f'background-color: {bg_color}'
+                    f'background-color: {bg_color}',                                    # 0 N°
+                    f'background-color: {bg_color}',                                    # 1 Lote
+                    f'background-color: {bg_color}',                                    # 2 Subproducto
+                    f'background-color: {bg_color}',                                    # 3 Costo Factor
+                    f'background-color: {bg_color}',                                    # 4 Insumos + MOD y MOI
+                    f'background-color: {bg_color}',                                    # 5 Costo Neto Total
+                    f'background-color: {bg_color}',                                    # 6 Margen Configurado
+                    f'color: {color_margen}; background-color: {bg_color}',             # 7 Margen Real
+                    f'color: #1a86c7; background-color: {bg_color}',                    # 8 Utilidad Neta - Azul
+                    f'color: #ff8c00; background-color: {bg_color}',                    # 9 IVA - Naranja
+                    f'color: #cc0000; background-color: {bg_color}',                    # 10 Costos de Venta - Rojo
+                    f'background-color: {bg_color}',                                    # 11 Precio Venta Bruto
+                    f'background-color: {bg_color}'                                     # 12 Precio KG
                 ]
             except:
                 return [f'background-color: {bg_color}'] * 13
