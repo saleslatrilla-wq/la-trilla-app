@@ -1036,11 +1036,10 @@ with tab3:
                     f'color: #1a86c7; background-color: {bg_color}',  # Utilidad Neta - Azul
                     f'color: #ff8c00; background-color: {bg_color}',  # IVA - Naranja
                     f'color: #cc0000; background-color: {bg_color}',  # Costos de Venta - Rojo
-                    f'background-color: {bg_color}',
                     f'background-color: {bg_color}'
                 ]
             except:
-                return [f'background-color: {bg_color}'] * 14
+                return [f'background-color: {bg_color}'] * 13
 
         styled_df = df_display.style.apply(style_row, axis=1)
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
