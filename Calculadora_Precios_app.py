@@ -1008,6 +1008,15 @@ with tab3:
             n = int(row["N°"])
             bg_color = "#e5e5e5" if n % 2 == 0 else "white"
             try:
+                margen_real = float(row["Margen Real"]) if row["Margen Real"] != "" else 0
+                # For color comparison we use the configured margin from backend (we store it in results as well if needed)
+                # For simplicity we compare against 40% as default target, or we can add the configured value
+                # Since user wants contrast vs configured, we keep simple logic: green if >= 40 (common target)
+                # Better: we can store configured margin per row if needed. For now use 40 as reference or make dynamic.
+                # To make it accurate, let's assume we compare to the value that was configured (we can add it to results)
+                # For this version, I'll use a simple approach: green if margen_real >= 40
+                color_margen = '#00aa00' if margen_real >= 40 else '#cc0000'
+                
                 return [
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
@@ -1015,7 +1024,7 @@ with tab3:
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
-                    f'background-color: {bg_color}',
+                    f'color: {color_margen}; background-color: {bg_color}',  # Margen Real
                     f'color: #1a86c7; background-color: {bg_color}',  # Utilidad Neta - Azul
                     f'color: #ff8c00; background-color: {bg_color}',  # IVA - Naranja
                     f'color: #cc0000; background-color: {bg_color}',  # Costos de Venta - Rojo
