@@ -870,8 +870,8 @@ with tab3:
                     "Costo Factor": 0,
                     "Insumos + MOD y MOI": 0,
                     "Costo Neto Total": round(costo_unitario * cantidad, 2),
-                    "Margen Real": 0.0,
                     "Margen Configurado": 0.0,
+                    "Margen Real": 0.0,
                     "Utilidad Neta": "",
                     "IVA": 0,
                     "Costos de Venta": 0,
@@ -962,8 +962,8 @@ with tab3:
                     "Costo Factor": round(costo_sub_neto, 2),
                     "Insumos + MOD y MOI": round(costo_insumos + costo_modmoi, 2),
                     "Costo Neto Total": costo_total_sub,
-                    "Margen Real": margen_neto_real,
                     "Margen Configurado": round(utilidad, 2),
+                    "Margen Real": margen_neto_real,
                     "Utilidad Neta": utilidad_neta,
                     "IVA": iva_monto,
                     "Costos de Venta": costos_venta_monto,
@@ -990,6 +990,11 @@ with tab3:
             if col in df_final.columns:
                 df_final[col] = df_final[col].apply(lambda x: f"${int(round(float(x))):,}".replace(",", ".") if pd.notna(x) and x != "" and x != 0 else "")
         
+        # Formatear columnas de porcentaje con exactamente 2 decimales + %
+        for col in ["Margen Configurado", "Margen Real"]:
+            if col in df_final.columns:
+                df_final[col] = df_final[col].apply(lambda x: f"{float(x):.2f}%" if pd.notna(x) and x != "" else "")
+        
         return df_final
 
     if st.button("🔄 Calcular Precios de Venta", type="primary"):
@@ -1002,7 +1007,7 @@ with tab3:
         df_display = st.session_state.df_precios[[
             "N°", "Lote", "Subproducto", 
             "Costo Factor", "Insumos + MOD y MOI", "Costo Neto Total", 
-            "Margen Real", "Margen Configurado", "Utilidad Neta", "IVA", "Costos de Venta", 
+            "Margen Configurado", "Margen Real", "Utilidad Neta", "IVA", "Costos de Venta", 
             "Precio Venta Bruto", "Precio KG"
         ]].copy()
 
@@ -1010,8 +1015,11 @@ with tab3:
             n = int(row["N°"])
             bg_color = "#e5e5e5" if n % 2 == 0 else "white"
             try:
-                margen_real = float(row["Margen Real"]) if row["Margen Real"] != "" else 0
-                margen_config = float(row["Margen Configurado"]) if row["Margen Configurado"] != "" else 0
+                margen_real_str = str(row["Margen Real"]).replace("%", "")
+                margen_config_str = str(row["Margen Configurado"]).replace("%", "")
+                
+                margen_real = float(margen_real_str) if margen_real_str != "" else 0
+                margen_config = float(margen_config_str) if margen_config_str != "" else 0
                 
                 color_margen = '#00aa00' if margen_real >= margen_config else '#cc0000'
                 
@@ -1022,8 +1030,9 @@ with tab3:
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
                     f'background-color: {bg_color}',
-                    f'color: {color_margen}; background-color: {bg_color}',  # Margen Real (colored)
                     f'background-color: {bg_color}',
+                    f'color: {color_margen}; background-color: {bg_color}',  # Margen Configurado
+                    f'color: {color_margen}; background-color: {bg_color}',  # Margen Real (colored)
                     f'color: #1a86c7; background-color: {bg_color}',  # Utilidad Neta - Azul
                     f'color: #ff8c00; background-color: {bg_color}',  # IVA - Naranja
                     f'color: #cc0000; background-color: {bg_color}',  # Costos de Venta - Rojo
@@ -1031,7 +1040,7 @@ with tab3:
                     f'background-color: {bg_color}'
                 ]
             except:
-                return [f'background-color: {bg_color}'] * 13
+                return [f'background-color: {bg_color}'] * 14
 
         styled_df = df_display.style.apply(style_row, axis=1)
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
