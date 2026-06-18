@@ -974,9 +974,10 @@ with tab3:
                 # === NUEVA LÓGICA DE REDONDEO ===
                 redondeo = calcular_redondeo(precio_bruto, costo_total, gastos_venta_pct, margen_objetivo=utilidad)
 
-                # Recalcular todo basado en el precio redondeado
+                # === CORRECCIÓN: Costos de Venta ahora sobre el Redondeo (precio con IVA) ===
+                costos_venta_red = round(redondeo * gastos_venta_pct / 100, 2) if gastos_venta_pct > 0 else 0.0
+
                 precio_neto_red = redondeo / 1.19
-                costos_venta_red = round(precio_neto_red * gastos_venta_pct / 100, 2) if gastos_venta_pct > 0 else 0.0
                 utilidad_neta_red = round(precio_neto_red - costo_total - costos_venta_red, 2)
                 margen_real_red = round((utilidad_neta_red / precio_neto_red * 100), 2) if precio_neto_red > 0 else 0.0
                 iva_red = round(redondeo * 0.19, 2)
