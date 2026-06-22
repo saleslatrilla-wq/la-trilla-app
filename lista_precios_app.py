@@ -154,26 +154,49 @@ def cargar_historial_lote(lote):
 
 # ==================== MODIFICAR ETIQUETA ====================
 def modificar_etiqueta_ezpx(archivo_buf, lote_nuevo, precio_bruto, precio_kg, fecha_prod, fecha_venc, origen):
+    import re
     try:
         tree = ET.parse(archivo_buf)
         root = tree.getroot()
+
+        # Detectar patrones dinámicamente en la etiqueta base
+        patron_precio = re.compile(r"^\$[\d\.]+$")       # $1.200 / $37.500
+        patron_fecha  = re.compile(r"^\d{2}/\d{4}$")     # 05/2025 / 06/2026
+        patron_lote   = re.compile(r"^\d{2}[A-Z]{3}\d{3}$")  # 22CPL606
+
+        precios_encontrados = []  # [(elem_data, valor)]
+        fechas_encontradas  = []
+        
         for elem in root.iter("GraphicShape"):
             data = elem.find("Data")
             if data is None or data.text is None:
                 continue
-            txt = (data.text or "").strip()
-            if txt == "09ABL604":
+            txt = data.text.strip()
+            if patron_precio.match(txt):
+                precios_encontrados.append((data, txt))
+            elif patron_fecha.match(txt):
+                fechas_encontradas.append((data, txt))
+            elif patron_lote.match(txt):
                 data.text = lote_nuevo
-            elif txt == "$1.400":
-                data.text = precio_bruto
-            elif txt == "$22.800":
-                data.text = precio_kg
-            elif txt == "CANADÁ":
+            elif txt.upper() in [p.upper() for p in ["CANADÁ","CANADA","ANDORRA","ARGENTINA","BRASIL","CHILE","CHINA","COLOMBIA","ESPAÑA","ESTADOS UNIDOS","FRANCIA","ITALIA","MÉXICO","PERU","PORTUGAL","URUGUAY"] + [origen.upper()]]:
                 data.text = origen.upper()
-            elif txt == "02/2026":
-                data.text = fecha_prod
-            elif txt == "02/2028":
-                data.text = fecha_venc
+
+        # El precio menor = precio bruto unitario; el mayor = precio por KG
+        if len(precios_encontrados) >= 2:
+            precios_encontrados.sort(key=lambda x: float(x[1].replace("$","").replace(".","").replace(",",".")))
+            precios_encontrados[0][0].text = precio_bruto
+            precios_encontrados[1][0].text = precio_kg
+        elif len(precios_encontrados) == 1:
+            precios_encontrados[0][0].text = precio_bruto
+
+        # La fecha menor = producción; la mayor = vencimiento
+        if len(fechas_encontradas) >= 2:
+            fechas_encontradas.sort(key=lambda x: x[1])
+            fechas_encontradas[0][0].text = fecha_prod
+            fechas_encontradas[1][0].text = fecha_venc
+        elif len(fechas_encontradas) == 1:
+            fechas_encontradas[0][0].text = fecha_prod
+
         buf = BytesIO()
         tree.write(buf, encoding="utf-8", xml_declaration=True)
         buf.seek(0)
