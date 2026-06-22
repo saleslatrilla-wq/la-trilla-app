@@ -93,13 +93,12 @@ def style_by_numero(df):
     unique_n = sorted(df["N°"].unique())
     colors = ["#f8f9fa", "#e6f3ff"]
     color_map = {n: colors[i % len(colors)] for i, n in enumerate(unique_n)}
-    # Pre-map colors by position to avoid KeyError when N° col is hidden
-    row_colors = [color_map.get(n, "#ffffff") for n in df["N°"]]
-    df = df.drop(columns=["N°"])
-    def apply_color(row):
-        color = row_colors[row.name] if row.name < len(row_colors) else "#ffffff"
-        return [f'background-color: {color}' for _ in row]
-    return df.style.apply(apply_color, axis=1).set_properties(**{'text-align': 'left', 'font-size': '14px'})
+    row_colors = [color_map.get(n, "#ffffff") for n in df["N°"].values]
+    df = df.drop(columns=["N°"]).reset_index(drop=True)
+    # Use apply per-column (axis=0) to avoid pandas Styler row-context bug
+    def color_col(col):
+        return [f'background-color: {row_colors[i]}' for i in range(len(col))]
+    return df.style.apply(color_col, axis=0).set_properties(**{'text-align': 'left', 'font-size': '14px'})
 
 # ==================== CARGAR PRECIOS ====================
 def cargar_precios(uploaded_file):
