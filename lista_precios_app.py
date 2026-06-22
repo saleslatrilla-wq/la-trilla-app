@@ -97,6 +97,9 @@ def cargar_precios(uploaded_file):
     if uploaded_file is None:
         return None
     df = pd.read_excel(uploaded_file, engine="xlrd" if uploaded_file.name.endswith(".xls") else "openpyxl")
+    # Eliminar Precio Venta Bruto original y usar Redondeo como el nuevo valor
+    if "Precio Venta Bruto" in df.columns and "Redondeo" in df.columns:
+        df = df.drop(columns=["Precio Venta Bruto"])
     df = df.rename(columns={"Subproducto": "Productos", "Redondeo": "Precio Venta Bruto"})
     columnas = ["N°", "Lote", "Productos", "Precio Venta Bruto", "Precio KG"]
     for col in columnas:
