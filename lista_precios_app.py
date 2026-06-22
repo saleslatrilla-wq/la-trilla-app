@@ -261,7 +261,7 @@ with tab2:
             opciones = ["Todos"] + sorted(df_lote["Productos"].tolist())
             busqueda_precio = st.selectbox("🔎 Filtrar producto", options=opciones, key="busqueda_precio")
             if busqueda_precio != "Todos":
-                df_lote = df_lote[df_lote["Productos"] == busqueda_precio]
+                df_lote = df_lote[df_lote["Productos"] == busqueda_precio].reset_index(drop=True)
 
             styled_lote = style_by_numero(df_lote)
 
