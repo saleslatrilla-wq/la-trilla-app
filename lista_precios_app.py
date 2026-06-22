@@ -103,13 +103,13 @@ def cargar_precios(uploaded_file):
     if uploaded_file is None:
         return None
     df = pd.read_excel(uploaded_file, engine="xlrd" if uploaded_file.name.endswith(".xls") else "openpyxl")
-    df = df.rename(columns={"Subproducto": "Productos"})
-    columnas = ["N°", "Lote", "Productos", "Redondeo", "Precio KG"]
+    df = df.rename(columns={"Subproducto": "Productos", "Redondeo": "Precio Venta Bruto"})
+    columnas = ["N°", "Lote", "Productos", "Precio Venta Bruto", "Precio KG"]
     for col in columnas:
         if col not in df.columns:
             st.error(f"Falta columna: {col}")
             return None
-    df["Redondeo"] = df["Redondeo"].apply(format_clp)
+    df["Precio Venta Bruto"] = df["Precio Venta Bruto"].apply(format_clp)
     df["Precio KG"] = df["Precio KG"].apply(format_clp)
     return df
 
@@ -119,7 +119,7 @@ HISTORIAL_SHEET = "historial_precios"
 def guardar_lote_historial(df, fecha_llegada):
     fecha = fecha_llegada.strftime("%Y-%m-%d")
     fecha_recepcion = datetime.now().strftime("%Y-%m-%d")
-    productos_json = json.dumps(df[["N°", "Productos", "Redondeo", "Precio KG"]].to_dict(orient="records"), ensure_ascii=False)
+    productos_json = json.dumps(df[["N°", "Productos", "Precio Venta Bruto", "Precio KG"]].to_dict(orient="records"), ensure_ascii=False)
     nuevo_registro = pd.DataFrame([{
         "lote": df["Lote"].iloc[0],
         "fecha_llegada": fecha,
@@ -205,7 +205,7 @@ with tab1:
         if df is not None:
             fecha_llegada = st.date_input("Fecha de llegada a Bodega", value=None)
             st.subheader("Vista previa del lote")
-            columnas_mostrar = ["Lote", "Productos", "Redondeo", "Precio KG"]
+            columnas_mostrar = ["Lote", "Productos", "Precio Venta Bruto", "Precio KG"]
             df_preview = df[columnas_mostrar + ["N°"]].copy()
             styled_df = style_by_numero(df_preview)
             st.dataframe(styled_df, use_container_width=True, hide_index=True, column_order=columnas_mostrar)
@@ -242,7 +242,7 @@ with tab2:
                 styled_lote,
                 use_container_width=True,
                 hide_index=True,
-                column_order=["Productos", "Redondeo", "Precio KG"],
+                column_order=["Productos", "Precio Venta Bruto", "Precio KG"],
                 on_select="rerun",
                 selection_mode="single-row",
                 key=f"tabla_lote_{lote_seleccionado}"
@@ -252,7 +252,7 @@ with tab2:
                 fila_idx = selection["selection"]["rows"][0]
                 fila = df_lote.iloc[fila_idx]
                 producto = fila["Productos"]
-                precio_bruto = fila["Redondeo"]
+                precio_bruto = fila["Precio Venta Bruto"]
                 precio_kg = fila["Precio KG"]
 
                 if "current_producto" not in st.session_state or st.session_state.current_producto != producto:
