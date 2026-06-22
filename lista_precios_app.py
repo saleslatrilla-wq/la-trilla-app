@@ -88,17 +88,9 @@ def format_clp(valor):
 # ==================== ESTILO TABLA ====================
 def style_by_numero(df):
     df = df.copy()
-    if "N°" not in df.columns:
-        df["N°"] = range(1, len(df) + 1)
-    unique_n = sorted(df["N°"].unique())
-    colors = ["#f8f9fa", "#e6f3ff"]
-    color_map = {n: colors[i % len(colors)] for i, n in enumerate(unique_n)}
-    row_colors = [color_map.get(n, "#ffffff") for n in df["N°"].values]
-    df = df.drop(columns=["N°"]).reset_index(drop=True)
-    # Use apply per-column (axis=0) to avoid pandas Styler row-context bug
-    def color_col(col):
-        return [f'background-color: {row_colors[i]}' for i in range(len(col))]
-    return df.style.apply(color_col, axis=0).set_properties(**{'text-align': 'left', 'font-size': '14px'})
+    if "N°" in df.columns:
+        df = df.drop(columns=["N°"])
+    return df.reset_index(drop=True)
 
 # ==================== CARGAR PRECIOS ====================
 def cargar_precios(uploaded_file):
@@ -244,7 +236,6 @@ with tab2:
                 styled_lote,
                 use_container_width=True,
                 hide_index=True,
-                column_order=["Productos", "Precio Venta Bruto", "Precio KG"],
                 on_select="rerun",
                 selection_mode="single-row",
                 key=f"tabla_lote_{lote_seleccionado}"
