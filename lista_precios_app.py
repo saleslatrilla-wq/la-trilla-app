@@ -257,6 +257,9 @@ with tab2:
                 producto = fila["Productos"]
                 precio_bruto = fila["Precio Venta Bruto"]
                 precio_kg = fila["Precio KG"]
+                # Persistir en session_state para que no se pierda en reruns
+                st.session_state.precio_bruto_sel = precio_bruto
+                st.session_state.precio_kg_sel = precio_kg
 
                 if "current_producto" not in st.session_state or st.session_state.current_producto != producto:
                     st.session_state.current_producto = producto
@@ -291,8 +294,8 @@ with tab2:
                             bytes_etiqueta = modificar_etiqueta_ezpx(
                                 archivo_buf,
                                 data['lote'],
-                                precio_bruto,
-                                precio_kg,
+                                st.session_state.get("precio_bruto_sel", precio_bruto),
+                                st.session_state.get("precio_kg_sel", precio_kg),
                                 fecha_prod.strftime("%m/%Y"),
                                 fecha_venc.strftime("%m/%Y"),
                                 origen
