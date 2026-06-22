@@ -87,60 +87,24 @@ def format_clp(valor):
 
 # ==================== ESTILO TABLA ====================
 def style_by_numero(df):
-    """Devuelve DataFrame limpio sin N° (para st.dataframe con on_select)."""
-    df = df.copy()
-    if "N°" in df.columns:
-        df = df.drop(columns=["N°"])
-    return df.reset_index(drop=True)
-
-def render_tabla_html(df, columnas):
-    """Renderiza tabla HTML con colores alternos por N° usando st.html."""
     df = df.copy()
     if "N°" not in df.columns:
         df["N°"] = range(1, len(df) + 1)
     unique_n = sorted(df["N°"].unique())
     colors = ["#f8f9fa", "#e6f3ff"]
     color_map = {n: colors[i % len(colors)] for i, n in enumerate(unique_n)}
-
-    headers = "".join(f"<th>{col}</th>" for col in columnas)
-    rows_html = ""
-    for _, row in df.iterrows():
-        color = color_map.get(row["N°"], "#ffffff")
-        cells = "".join(f"<td>{row[col]}</td>" for col in columnas)
-        rows_html += f'<tr style="background-color:{color}">{cells}</tr>'
-
-    html = f"""
-    <style>
-        .tabla-precios {{
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 14px;
-            font-family: sans-serif;
-        }}
-        .tabla-precios th {{
-            background-color: #2c3e50;
-            color: white;
-            padding: 8px 12px;
-            text-align: left;
-        }}
-        .tabla-precios td {{
-            padding: 7px 12px;
-            border-bottom: 1px solid #dee2e6;
-        }}
-    </style>
-    <table class="tabla-precios">
-        <thead><tr>{headers}</tr></thead>
-        <tbody>{rows_html}</tbody>
-    </table>
-    """
-    st.html(html)
+    color_series = df["N°"].map(color_map).reset_index(drop=True)
+    df = df.drop(columns=["N°"]).reset_index(drop=True)
+    def apply_color(row):
+        color = color_series.iloc[row.name]
+        return [f'background-color: {color}' for _ in row]
+    return df.style.apply(apply_color, axis=1).set_properties(**{'text-align': 'left', 'font-size': '14px'})
 
 # ==================== CARGAR PRECIOS ====================
 def cargar_precios(uploaded_file):
     if uploaded_file is None:
         return None
     df = pd.read_excel(uploaded_file, engine="xlrd" if uploaded_file.name.endswith(".xls") else "openpyxl")
-    # Eliminar Precio Venta Bruto original y usar Redondeo como el nuevo valor
     if "Precio Venta Bruto" in df.columns and "Redondeo" in df.columns:
         df = df.drop(columns=["Precio Venta Bruto"])
     df = df.rename(columns={"Subproducto": "Productos", "Redondeo": "Precio Venta Bruto"})
@@ -247,7 +211,8 @@ with tab1:
             st.subheader("Vista previa del lote")
             columnas_mostrar = ["Lote", "Productos", "Precio Venta Bruto", "Precio KG"]
             df_preview = df[columnas_mostrar + ["N°"]].copy()
-            render_tabla_html(df_preview, columnas_mostrar)
+            styled_df = style_by_numero(df_preview)
+            st.dataframe(styled_df, use_container_width=True, hide_index=True)
             if st.button("📦 Recepcionar Lotes", type="primary", disabled=fecha_llegada is None):
                 guardar_lote_historial(df, fecha_llegada)
                 st.session_state.recepcion_exitosa = True
@@ -275,10 +240,6 @@ with tab2:
             if busqueda_precio != "Todos":
                 df_lote = df_lote[df_lote["Productos"] == busqueda_precio]
 
-            columnas_tabla = ["Productos", "Precio Venta Bruto", "Precio KG"]
-            render_tabla_html(df_lote, columnas_tabla)
-
-            st.caption("👆 Consulta de referencia — selecciona una fila abajo para generar etiqueta:")
             styled_lote = style_by_numero(df_lote)
 
             selection = st.dataframe(
