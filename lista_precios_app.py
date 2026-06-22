@@ -93,8 +93,11 @@ def style_by_numero(df):
     unique_n = sorted(df["N°"].unique())
     colors = ["#f8f9fa", "#e6f3ff"]
     color_map = {n: colors[i % len(colors)] for i, n in enumerate(unique_n)}
+    # Pre-map colors by position to avoid KeyError when N° col is hidden
+    row_colors = [color_map.get(n, "#ffffff") for n in df["N°"]]
+    df = df.drop(columns=["N°"])
     def apply_color(row):
-        color = color_map.get(row["N°"], "#ffffff")
+        color = row_colors[row.name] if row.name < len(row_colors) else "#ffffff"
         return [f'background-color: {color}' for _ in row]
     return df.style.apply(apply_color, axis=1).set_properties(**{'text-align': 'left', 'font-size': '14px'})
 
@@ -208,7 +211,7 @@ with tab1:
             columnas_mostrar = ["Lote", "Productos", "Precio Venta Bruto", "Precio KG"]
             df_preview = df[columnas_mostrar + ["N°"]].copy()
             styled_df = style_by_numero(df_preview)
-            st.dataframe(styled_df, use_container_width=True, hide_index=True, column_order=columnas_mostrar)
+            st.dataframe(styled_df, use_container_width=True, hide_index=True)
             if st.button("📦 Recepcionar Lotes", type="primary", disabled=fecha_llegada is None):
                 guardar_lote_historial(df, fecha_llegada)
                 st.session_state.recepcion_exitosa = True
