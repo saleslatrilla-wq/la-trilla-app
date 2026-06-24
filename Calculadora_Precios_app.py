@@ -55,30 +55,55 @@ def save_sheet(sheet_name, df):
         worksheet.update([[]])
 
 def save_df(df, sheet_name):
+    import numpy as np
     try:
         worksheet = spreadsheet.worksheet(sheet_name)
     except:
         worksheet = spreadsheet.add_worksheet(title=sheet_name, rows="1000", cols="20")
     worksheet.clear()
-    df_clean = df.replace([float('nan'), float('inf'), -float('inf')], [None, None, None])
-    if not df_clean.empty:
-        rows = [df_clean.columns.values.tolist()]
-        for _, row in df_clean.iterrows():
-            clean_row = []
-            for val in row:
-                if val is None:
-                    clean_row.append("")
-                elif isinstance(val, float):
-                    if not (val != val) and val == int(val):
-                        clean_row.append(int(val))
-                    else:
-                        clean_row.append(val)
-                else:
-                    clean_row.append(val)
-            rows.append(clean_row)
-        worksheet.update(rows, value_input_option="RAW")
-    else:
+
+    if df is None or df.empty:
         worksheet.update([[]])
+        return
+
+    # Robust cleaning: handle NaN, pd.NA, inf, numpy types, etc.
+    df_clean = df.astype(object).where(pd.notna(df), None)
+    df_clean = df_clean.replace([float('inf'), -float('inf'), np.inf, -np.inf], None)
+
+    def _to_native(val):
+        if val is None:
+            return ""
+        if pd.isna(val):
+            return ""
+        if isinstance(val, (bool, np.bool_)):
+            return bool(val)
+        if isinstance(val, (np.integer,)):
+            return int(val)
+        if isinstance(val, (np.floating,)):
+            if val != val or val == float('inf') or val == -float('inf'):
+                return ""
+            return float(val)
+        if isinstance(val, float):
+            if val != val or val == float('inf') or val == -float('inf'):
+                return ""
+            if val == int(val):
+                return int(val)
+            return float(val)
+        if isinstance(val, (int, np.integer)):
+            return int(val)
+        # Everything else as string (safe for JSON)
+        return str(val)
+
+    rows = []
+    # Header row
+    header = [_to_native(c) for c in df_clean.columns.tolist()]
+    rows.append(header)
+
+    for _, row in df_clean.iterrows():
+        clean_row = [_to_native(val) for val in row]
+        rows.append(clean_row)
+
+    worksheet.update(rows, value_input_option="RAW")
 
 def load_df(sheet_name, columns=None):
     df = load_sheet(sheet_name)
