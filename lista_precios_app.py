@@ -81,8 +81,13 @@ def format_fecha_chilena(fecha):
 
 # ==================== FORMATO CLP ====================
 def format_clp(valor):
+    if pd.isna(valor) or valor is None:
+        return ""
     if isinstance(valor, (int, float)):
-        return f"${int(valor):,}".replace(",", ".")
+        try:
+            return f"${int(valor):,}".replace(",", ".")
+        except (ValueError, TypeError):
+            return ""
     return valor
 
 # ==================== ESTILO TABLA ====================
@@ -113,6 +118,15 @@ def cargar_precios(uploaded_file):
         if col not in df.columns:
             st.error(f"Falta columna: {col}")
             return None
+
+    # Filtrar filas sin precios válidos (ej: productos a granel/Saco sin margen configurado -> Redondeo/Precio KG vacíos)
+    df = df.dropna(subset=["Precio Venta Bruto", "Precio KG"])
+    if df.empty:
+        st.error("❌ No hay productos con precios de venta calculados en este archivo.\n"
+                 "Las filas de productos a granel (Saco/Bolsa) sin margen configurado se omiten automáticamente.\n"
+                 "Asegúrate de configurar márgenes > 0% en la Calculadora de Precios para los productos que quieres recepcionar.")
+        return None
+
     df["Precio Venta Bruto"] = df["Precio Venta Bruto"].apply(format_clp)
     df["Precio KG"] = df["Precio KG"].apply(format_clp)
     return df
@@ -337,4 +351,4 @@ with tab2:
     else:
         st.info("Aún no hay lotes recepcionados")
 
-st.caption("Desarrollado para La Trilla con ❤️ • Datos en Google Sheets v1.1")
+st.caption("Desarrollado para La Trilla con ❤️ • Datos en Google Sheets v1.2 (manejo robusto de archivos con filas incompletas)")
