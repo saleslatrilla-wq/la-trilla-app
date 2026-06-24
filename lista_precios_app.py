@@ -95,6 +95,7 @@ def style_by_numero(df):
     df = df.copy()
     if "N°" not in df.columns:
         df["N°"] = range(1, len(df) + 1)
+    df["N°"] = pd.to_numeric(df["N°"], errors="coerce").fillna(0).astype(int)
     unique_n = sorted(df["N°"].unique())
     colors = ["#f8f9fa", "#e6f3ff"]
     color_map = {n: colors[i % len(colors)] for i, n in enumerate(unique_n)}
