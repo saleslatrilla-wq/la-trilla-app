@@ -273,7 +273,7 @@ with tab2:
             data = st.session_state.data_lote
             st.success(f"**Lote:** {data['lote']} | **Fecha llegada:** {format_fecha_chilena(data['fecha_llegada'])}")
             df_lote = pd.DataFrame(data["productos"])
-            opciones = ["Todos"] + sorted(df_lote["Productos"].tolist())
+            opciones = ["Todos"] + sorted([str(p) for p in df_lote["Productos"].tolist() if p is not None and str(p).strip() != ""])
             busqueda_precio = st.selectbox("🔎 Filtrar producto", options=opciones, key="busqueda_precio")
             if busqueda_precio != "Todos":
                 df_lote = df_lote[df_lote["Productos"] == busqueda_precio].reset_index(drop=True)
