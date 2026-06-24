@@ -277,10 +277,9 @@ with tab2:
             if busqueda_precio != "Todos":
                 df_lote = df_lote[df_lote["Productos"] == busqueda_precio].reset_index(drop=True)
 
-            styled_lote = style_by_numero(df_lote)
-
+            # Usamos el DataFrame plano (no el styled) porque on_select + Styler causa TypeError en Streamlit
             selection = st.dataframe(
-                styled_lote,
+                df_lote,
                 use_container_width=True,
                 hide_index=True,
                 on_select="rerun",
