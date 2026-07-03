@@ -154,7 +154,12 @@ def listar_lotes_recibidos():
     df = load_sheet(HISTORIAL_SHEET)
     if df.empty:
         return []
-    return sorted(df["lote"].unique().tolist(), reverse=True)
+    # Ordenar por fecha_recepcion descendente (más reciente primero)
+    df["fecha_recepcion_dt"] = pd.to_datetime(df["fecha_recepcion"], errors="coerce")
+    df_sorted = df.sort_values("fecha_recepcion_dt", ascending=False)
+    # Obtener lotes únicos manteniendo el orden (el más reciente primero)
+    lotes_unicos = df_sorted["lote"].drop_duplicates().tolist()
+    return lotes_unicos
 
 def cargar_historial_lote(lote):
     df = load_sheet(HISTORIAL_SHEET)
@@ -262,12 +267,22 @@ with tab2:
     st.subheader("🔎 Consultar Lotes Recibidos")
     lotes_disponibles = listar_lotes_recibidos()
     if lotes_disponibles:
-        lote_seleccionado = st.selectbox("Seleccionar Lote", lotes_disponibles)
-        if st.button("Cargar Información del Lote", type="primary"):
-            data = cargar_historial_lote(lote_seleccionado)
-            if data:
-                st.session_state.data_lote = data
-                st.success(f"✅ Lote cargado: **{data['lote']}**")
+        # Opción vacía al inicio para poder escribir/buscar sin que aparezca un lote por defecto
+        opciones = [""] + lotes_disponibles
+        lote_seleccionado = st.selectbox(
+            "Seleccionar Lote", 
+            opciones, 
+            index=0,
+            placeholder="Escribe para buscar o selecciona un lote..."
+        )
+        if st.button("Cargar Información del Lote", type="primary", disabled=not lote_seleccionado):
+            if lote_seleccionado:
+                data = cargar_historial_lote(lote_seleccionado)
+                if data:
+                    st.session_state.data_lote = data
+                    st.success(f"✅ Lote cargado: **{data['lote']}**")
+                else:
+                    st.error(f"No se encontró información para el lote '{lote_seleccionado}'")
 
         if "data_lote" in st.session_state and st.session_state.data_lote:
             data = st.session_state.data_lote
