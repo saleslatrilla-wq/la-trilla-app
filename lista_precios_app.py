@@ -240,8 +240,8 @@ def _admin_password():
         return ADMIN_PASSWORD_DEFAULT
 
 # ==================== DATOS DE PRODUCTOS (ORIGEN Y FECHAS) ====================
-DATOS_SHEET = "datos_productos"
-COLS_DATOS = ["producto", "origen", "fecha_produccion", "fecha_vencimiento", "ultimo_uso", "ultimo_lote"]
+DATOS_SHEET = "datos_lote"   # una fila por (lote, producto)
+COLS_DATOS = ["lote", "producto", "origen", "fecha_produccion", "fecha_vencimiento"]
 REGEX_FECHA = r"^(0[1-9]|1[0-2])/\d{4}$"   # MM/AAAA
 PAISES = ["Afganistán", "Albania", "Alemania", "Andorra", "Angola", "Antigua y Barbuda", "Arabia Saudita", "Argelia", "Argentina", "Armenia", "Australia", "Austria", "Azerbaiyán", "Bahamas", "Bangladés", "Barbados", "Baréin", "Bélgica", "Belice", "Benín", "Bielorrusia", "Birmania", "Bolivia", "Bosnia y Herzegovina", "Botsuana", "Brasil", "Brunéi", "Bulgaria", "Burkina Faso", "Burundi", "Bután", "Cabo Verde", "Camboya", "Camerún", "Canadá", "Catar", "Chad", "Chile", "China", "Chipre", "Ciudad del Vaticano", "Colombia", "Comoras", "Corea del Norte", "Corea del Sur", "Costa de Marfil", "Costa Rica", "Croacia", "Cuba", "Dinamarca", "Dominica", "Ecuador", "Egipto", "El Salvador", "Emiratos Árabes Unidos", "Eritrea", "Eslovaquia", "Eslovenia", "España", "Estados Unidos", "Estonia", "Etiopía", "Filipinas", "Finlandia", "Fiyi", "Francia", "Gabón", "Gambia", "Georgia", "Ghana", "Granada", "Grecia", "Guatemala", "Guinea", "Guinea-Bisáu", "Guinea Ecuatorial", "Guyana", "Haití", "Honduras", "Hungría", "India", "Indonesia", "Irak", "Irán", "Irlanda", "Islandia", "Islas Marshall", "Islas Salomón", "Israel", "Italia", "Jamaica", "Japón", "Jordania", "Kazajistán", "Kenia", "Kirguistán", "Kiribati", "Kuwait", "Laos", "Lesoto", "Letonia", "Líbano", "Liberia", "Libia", "Liechtenstein", "Lituania", "Luxemburgo", "Macedonia del Norte", "Madagascar", "Malasia", "Malaui", "Maldivas", "Malí", "Malta", "Marruecos", "Mauricio", "Mauritania", "México", "Micronesia", "Moldavia", "Mónaco", "Mongolia", "Montenegro", "Mozambique", "Namibia", "Nauru", "Nepal", "Nicaragua", "Níger", "Nigeria", "Noruega", "Nueva Zelanda", "Omán", "Países Bajos", "Pakistán", "Palaos", "Panamá", "Papúa Nueva Guinea", "Paraguay", "Perú", "Polonia", "Portugal", "Reino Unido", "República Centroafricana", "República Checa", "República Democrática del Congo", "República Dominicana", "República del Congo", "Ruanda", "Rumania", "Rusia", "Samoa", "San Cristóbal y Nieves", "San Marino", "San Vicente y las Granadinas", "Santa Lucía", "Santo Tomé y Príncipe", "Senegal", "Serbia", "Seychelles", "Sierra Leona", "Singapur", "Siria", "Somalia", "Sri Lanka", "Suazilandia", "Sudáfrica", "Sudán", "Sudán del Sur", "Suecia", "Suiza", "Surinam", "Tailandia", "Tanzania", "Tayikistán", "Timor Oriental", "Togo", "Tonga", "Trinidad y Tobago", "Túnez", "Turkmenistán", "Turquía", "Tuvalu", "Ucrania", "Uganda", "Uruguay", "Uzbekistán", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Yibuti", "Zambia", "Zimbabue"]
 
@@ -256,10 +256,12 @@ def cargar_datos_productos():
 def _datos_productos_cache():
     return cargar_datos_productos()
 
-def obtener_datos_producto(producto, df=None):
+def obtener_datos_producto(lote, producto, df=None):
+    """Datos de origen y fechas guardados para ese producto EN ESE LOTE (o None)."""
     if df is None:
         df = _datos_productos_cache()
-    mask = df["producto"].str.strip().str.lower() == str(producto).strip().lower()
+    mask = ((df["lote"].str.strip() == str(lote).strip())
+            & (df["producto"].str.strip().str.lower() == str(producto).strip().lower()))
     return df[mask].iloc[0].to_dict() if mask.any() else None
 
 def datos_completos(d):
@@ -272,15 +274,14 @@ def datos_completos(d):
         return d
     return None
 
-def guardar_datos_productos(items, lote):
-    """items: [{'producto','origen','fecha_prod','fecha_venc'}]. Actualiza datos y 'último uso'."""
+def guardar_datos_productos(lote, items):
+    """items: [{'producto','origen','fecha_prod','fecha_venc'}]. Guarda/actualiza solo para ese lote."""
     df = cargar_datos_productos()
-    hoy = datetime.now().strftime("%d/%m/%Y")
     for it in items:
-        reg = {"producto": it["producto"], "origen": it["origen"],
-               "fecha_produccion": it["fecha_prod"], "fecha_vencimiento": it["fecha_venc"],
-               "ultimo_uso": hoy, "ultimo_lote": lote}
-        mask = df["producto"].str.strip().str.lower() == it["producto"].strip().lower()
+        reg = {"lote": str(lote), "producto": it["producto"], "origen": it["origen"],
+               "fecha_produccion": it["fecha_prod"], "fecha_vencimiento": it["fecha_venc"]}
+        mask = ((df["lote"].str.strip() == str(lote).strip())
+                & (df["producto"].str.strip().str.lower() == it["producto"].strip().lower()))
         if mask.any():
             for k, v in reg.items():
                 df.loc[mask, k] = v
@@ -289,10 +290,26 @@ def guardar_datos_productos(items, lote):
     save_sheet(DATOS_SHEET, df)
     _datos_productos_cache.clear()
 
-def registrar_uso(items, lote):
-    """Callback de los botones de descarga: guarda los datos usados como 'último uso'."""
-    if items:
-        guardar_datos_productos(items, lote)
+def reemplazar_datos_lote(lote, df_nuevo):
+    """Reemplaza todas las filas de ese lote por df_nuevo (columnas COLS_DATOS)."""
+    df = cargar_datos_productos()
+    df = df[df["lote"].str.strip() != str(lote).strip()]
+    df = pd.concat([df, df_nuevo[COLS_DATOS]], ignore_index=True)
+    save_sheet(DATOS_SHEET, df.reset_index(drop=True))
+    _datos_productos_cache.clear()
+
+def mover_o_borrar_datos_lote(lote, nuevo_nombre=None):
+    """Si se renombra un lote, sus datos lo siguen; sin nuevo_nombre, se eliminan."""
+    df = cargar_datos_productos()
+    mask = df["lote"].str.strip() == str(lote).strip()
+    if not mask.any():
+        return
+    if nuevo_nombre:
+        df.loc[mask, "lote"] = nuevo_nombre
+    else:
+        df = df[~mask]
+    save_sheet(DATOS_SHEET, df.reset_index(drop=True))
+    _datos_productos_cache.clear()
 
 def generar_etiqueta_producto(producto, lote, precio_bruto, precio_kg, fecha_prod, fecha_venc, origen):
     """Busca la etiqueta base en Drive, la modifica y devuelve (bytes, error)."""
@@ -306,21 +323,6 @@ def generar_etiqueta_producto(producto, lote, precio_bruto, precio_kg, fecha_pro
     if not data:
         return None, "no se pudo modificar la etiqueta"
     return data, None
-
-def productos_en_historial():
-    df = load_sheet(HISTORIAL_SHEET)
-    nombres = {}
-    if df.empty or "productos_json" not in df.columns:
-        return []
-    for pj in df["productos_json"]:
-        try:
-            for p in json.loads(pj):
-                n = str(p.get("Productos", "")).strip()
-                if n:
-                    nombres.setdefault(n.lower(), n)
-        except Exception:
-            continue
-    return sorted(nombres.values(), key=str.lower)
 
 def normalizar_precio(v):
     """Acepta '1500', '$1.500', 1500 -> '$1.500'. Devuelve None si no es válido."""
@@ -398,7 +400,7 @@ with tab2:
                 dp = _datos_productos_cache()
                 listos, sin_datos = [], []
                 for _, r in df_lote_completo.iterrows():
-                    d = datos_completos(obtener_datos_producto(r["Productos"], dp))
+                    d = datos_completos(obtener_datos_producto(data["lote"], r["Productos"], dp))
                     if d:
                         listos.append((r, d))
                     else:
@@ -408,10 +410,9 @@ with tab2:
                     st.dataframe(pd.DataFrame([{
                         "Producto": r["Productos"], "Origen": d["origen"],
                         "Producción": d["fecha_produccion"], "Vencimiento": d["fecha_vencimiento"],
-                        "Último uso": d["ultimo_uso"] or "—", "Último lote": d["ultimo_lote"] or "—",
                     } for r, d in listos]), hide_index=True, use_container_width=True)
                 if sin_datos:
-                    st.caption("Sin datos (se guardan solos al generar su etiqueta una vez, o en 🔐 Administración): "
+                    st.caption("Sin datos en este lote (se guardan al generar su etiqueta, o complétalos en 🔐 Administración): "
                                + ", ".join(sin_datos))
 
                 if st.button("⚡ Generar ZIP de etiquetas", disabled=not listos, key="btn_zip"):
@@ -449,8 +450,6 @@ with tab2:
                             data=zip_info["bytes"],
                             file_name=f"Etiquetas - {data['lote']}.zip",
                             mime="application/zip",
-                            on_click=registrar_uso,
-                            args=(zip_info["usados"], data["lote"]),
                             type="primary",
                             key="dl_zip",
                         )
@@ -485,23 +484,21 @@ with tab2:
 
                 st.info(f"**Producto seleccionado:** {producto}")
 
-                guardado = datos_completos(obtener_datos_producto(producto))
+                guardado = datos_completos(obtener_datos_producto(data["lote"], producto))
                 usar_guardados = False
                 if guardado:
                     st.success(
-                        f"📌 **Datos guardados** · Origen: **{guardado['origen']}** · "
-                        f"Producción: **{guardado['fecha_produccion']}** · Vencimiento: **{guardado['fecha_vencimiento']}**\n\n"
-                        f"🕒 Último uso: {guardado['ultimo_uso'] or 'sin registro'}"
-                        + (f" (lote {guardado['ultimo_lote']})" if guardado['ultimo_lote'] else "")
+                        f"📌 **Datos guardados para el lote {data['lote']}** · Origen: **{guardado['origen']}** · "
+                        f"Producción: **{guardado['fecha_produccion']}** · Vencimiento: **{guardado['fecha_vencimiento']}**"
                     )
                     modo = st.radio(
                         "¿Qué datos usar para la etiqueta?",
-                        ["♻️ Reutilizar datos guardados", "✏️ Ingresar datos nuevos"],
+                        ["♻️ Usar datos guardados", "✏️ Corregir datos"],
                         horizontal=True, key=f"modo_{producto}"
                     )
                     usar_guardados = modo.startswith("♻️")
                 else:
-                    st.caption("Este producto aún no tiene datos guardados: ingrésalos una vez y quedarán para los próximos lotes.")
+                    st.caption("Este producto aún no tiene origen ni fechas en este lote: ingrésalos y quedarán guardados para este lote.")
                 modo_actual = "guardados" if usar_guardados else "nuevos"
 
                 if usar_guardados:
@@ -544,6 +541,7 @@ with tab2:
                                 "producto": producto, "modo": "nuevos",
                                 "item": {"producto": producto, "origen": origen, "fecha_prod": fp, "fecha_venc": fv},
                             }
+                            guardar_datos_productos(data["lote"], [st.session_state.etiqueta_info["item"]])
                         else:
                             st.session_state.etiqueta_info = None
                             st.error(f"❌ {err} ('{producto}')")
@@ -557,8 +555,6 @@ with tab2:
                         data=st.session_state.etiqueta_bytes,
                         file_name=f"{producto} - {data['lote']}.ezpx".replace("/", "-"),
                         mime="application/xml",
-                        on_click=registrar_uso,
-                        args=([info["item"]], data["lote"]),
                         type="primary",
                         key=f"dl_{producto}",
                     )
@@ -587,7 +583,7 @@ with tab3:
         if st.session_state.get("adm_msg"):
             st.success(st.session_state.pop("adm_msg"))
 
-        sub_a, sub_b = st.tabs(["✏️ Editar registros de lotes", "🏷️ Datos de productos (origen y fechas)"])
+        sub_a, sub_b = st.tabs(["✏️ Editar registros de lotes", "🏷️ Origen y fechas por lote"])
 
         # ---------- EDITAR LOTES ----------
         with sub_a:
@@ -654,69 +650,76 @@ with tab3:
                             df_hist.loc[idx, "fecha_llegada"] = fecha_ll.strftime("%Y-%m-%d")
                             df_hist.loc[idx, "productos_json"] = json.dumps(registros, ensure_ascii=False)
                             save_sheet(HISTORIAL_SHEET, df_hist)
+                            if nombre != str(lote_edit):
+                                mover_o_borrar_datos_lote(lote_edit, nombre)
                             st.session_state.pop("data_lote", None)
                             st.session_state.adm_msg = f"✅ Lote '{nombre}' actualizado"
                             st.rerun()
 
                     with st.expander("🗑️ Eliminar este lote"):
-                        st.warning("Se elimina el registro completo del historial. Esta acción no se puede deshacer.")
+                        st.warning("Se elimina el registro del historial y sus datos de origen/fechas. Esta acción no se puede deshacer.")
                         confirmar = st.checkbox("Confirmo que quiero eliminar este lote", key=f"adm_conf_{lote_edit}")
                         if st.button("Eliminar lote", disabled=not confirmar, key="adm_del"):
                             save_sheet(HISTORIAL_SHEET, df_hist.drop(index=idx).reset_index(drop=True))
+                            mover_o_borrar_datos_lote(lote_edit)
                             st.session_state.pop("data_lote", None)
                             st.session_state.adm_msg = f"🗑️ Lote '{lote_edit}' eliminado"
                             st.rerun()
 
-        # ---------- DATOS DE PRODUCTOS ----------
+        # ---------- ORIGEN Y FECHAS POR LOTE ----------
         with sub_b:
-            st.caption("Origen y fechas que se usan automáticamente al generar etiquetas. Fechas en formato MM/AAAA. "
-                       "'Último uso' y 'Último lote' se actualizan solos al descargar una etiqueta.")
-            if st.button("➕ Importar productos de los lotes recibidos", key="adm_import"):
-                df_dp = cargar_datos_productos()
-                existentes = set(df_dp["producto"].str.strip().str.lower())
-                nuevos = [n for n in productos_en_historial() if n.lower() not in existentes]
-                if nuevos:
-                    df_dp = pd.concat([df_dp, pd.DataFrame({"producto": nuevos})], ignore_index=True).fillna("")
-                    save_sheet(DATOS_SHEET, df_dp)
-                    _datos_productos_cache.clear()
-                    st.session_state.dp_ver = st.session_state.get("dp_ver", 0) + 1
-                    st.session_state.adm_msg = f"✅ Se agregaron {len(nuevos)} productos nuevos"
-                else:
-                    st.session_state.adm_msg = "No hay productos nuevos para importar"
-                st.rerun()
+            st.caption("Origen y fechas (MM/AAAA) de cada producto **dentro de un lote**. "
+                       "Se usan para generar las etiquetas de ese lote y no afectan a otros lotes.")
+            lote_dp = st.selectbox("Lote", [""] + listar_lotes_recibidos(), key="adm_lote_dp",
+                                   placeholder="Selecciona un lote...")
+            if lote_dp:
+                data_l = cargar_historial_lote(lote_dp)
+                productos_l = []
+                for p in (data_l["productos"] if data_l else []):
+                    n = str(p.get("Productos", "")).strip()
+                    if n and n.lower() not in [x.lower() for x in productos_l]:
+                        productos_l.append(n)
 
-            df_dp = cargar_datos_productos()
-            ed = st.data_editor(
-                df_dp, num_rows="dynamic", hide_index=True, use_container_width=True,
-                key=f"adm_datos_prod_{st.session_state.get('dp_ver', 0)}",
-                column_config={
-                    "producto": st.column_config.TextColumn("Producto", required=True),
-                    "origen": st.column_config.SelectboxColumn("País de origen", options=PAISES),
-                    "fecha_produccion": st.column_config.TextColumn("Producción (MM/AAAA)", validate=REGEX_FECHA),
-                    "fecha_vencimiento": st.column_config.TextColumn("Vencimiento (MM/AAAA)", validate=REGEX_FECHA),
-                    "ultimo_uso": st.column_config.TextColumn("Último uso", disabled=True),
-                    "ultimo_lote": st.column_config.TextColumn("Último lote", disabled=True),
-                },
-            )
+                df_all = cargar_datos_productos()
+                df_l = df_all[df_all["lote"].str.strip() == str(lote_dp).strip()].copy()
+                df_l["_k"] = df_l["producto"].str.strip().str.lower()
+                df_l = df_l.drop_duplicates("_k", keep="last")
 
-            if st.button("💾 Guardar datos de productos", type="primary", key="adm_guardar_dp"):
-                ed2 = ed.fillna("").astype(str)
-                ed2["producto"] = ed2["producto"].str.strip()
-                ed2 = ed2[ed2["producto"] != ""]
+                base = pd.DataFrame({"producto": productos_l})
+                base["_k"] = base["producto"].str.lower()
+                tabla = (base.merge(df_l[["_k", "origen", "fecha_produccion", "fecha_vencimiento"]], on="_k", how="left")
+                             .drop(columns="_k").fillna(""))
+                tabla["origen"] = tabla["origen"].apply(lambda x: x if x else None)
 
-                def _fecha_ok(x):
-                    x = x.strip()
-                    return x == "" or re.match(REGEX_FECHA, x) is not None
+                ed = st.data_editor(
+                    tabla, hide_index=True, use_container_width=True, num_rows="fixed",
+                    key=f"adm_dp_{lote_dp}_{st.session_state.get('dp_ver', 0)}",
+                    column_config={
+                        "producto": st.column_config.TextColumn("Producto", disabled=True),
+                        "origen": st.column_config.SelectboxColumn("País de origen", options=PAISES),
+                        "fecha_produccion": st.column_config.TextColumn("Producción (MM/AAAA)", validate=REGEX_FECHA),
+                        "fecha_vencimiento": st.column_config.TextColumn("Vencimiento (MM/AAAA)", validate=REGEX_FECHA),
+                    },
+                )
 
-                malas = ed2[~(ed2["fecha_produccion"].map(_fecha_ok) & ed2["fecha_vencimiento"].map(_fecha_ok))]["producto"].tolist()
-                if malas:
-                    st.error("Fechas inválidas (usa MM/AAAA) en: " + ", ".join(malas))
-                else:
-                    ed2 = ed2[~ed2["producto"].str.lower().duplicated(keep="last")]
-                    save_sheet(DATOS_SHEET, ed2[COLS_DATOS].reset_index(drop=True))
-                    _datos_productos_cache.clear()
-                    st.session_state.dp_ver = st.session_state.get("dp_ver", 0) + 1
-                    st.session_state.adm_msg = "✅ Datos de productos guardados"
-                    st.rerun()
+                if st.button("💾 Guardar datos del lote", type="primary", key="adm_guardar_dp"):
+                    ed2 = ed.fillna("").astype(str)
+
+                    def _fecha_ok(x):
+                        x = x.strip()
+                        return x == "" or re.match(REGEX_FECHA, x) is not None
+
+                    malas = ed2[~(ed2["fecha_produccion"].map(_fecha_ok) & ed2["fecha_vencimiento"].map(_fecha_ok))]["producto"].tolist()
+                    if malas:
+                        st.error("Fechas inválidas (usa MM/AAAA) en: " + ", ".join(malas))
+                    else:
+                        con_datos = ed2[(ed2["origen"].str.strip() != "")
+                                        | (ed2["fecha_produccion"].str.strip() != "")
+                                        | (ed2["fecha_vencimiento"].str.strip() != "")].copy()
+                        con_datos.insert(0, "lote", str(lote_dp))
+                        reemplazar_datos_lote(lote_dp, con_datos)
+                        st.session_state.dp_ver = st.session_state.get("dp_ver", 0) + 1
+                        st.session_state.adm_msg = f"✅ Datos del lote '{lote_dp}' guardados ({len(con_datos)} productos)"
+                        st.rerun()
 
 st.caption("Desarrollado para La Trilla con ❤️ • Datos en Google Sheets v1.3 (administración, datos de productos y etiquetas en lote)")
