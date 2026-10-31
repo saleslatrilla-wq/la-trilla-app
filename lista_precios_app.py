@@ -7,6 +7,7 @@ from io import BytesIO
 import re
 import zipfile
 import hmac
+import unicodedata
 
 st.set_page_config(page_title="La Trilla - Lista de Precios", layout="wide", page_icon="📋")
 
@@ -257,12 +258,14 @@ def _datos_productos_cache():
     return cargar_datos_productos()
 
 def obtener_datos_producto(lote, producto, df=None):
-    """Datos de origen y fechas guardados para ese producto EN ESE LOTE (o None)."""
+    """Datos de origen y fechas guardados para ese producto (madre) EN ESE LOTE, o None."""
     if df is None:
         df = _datos_productos_cache()
-    mask = ((df["lote"].str.strip() == str(lote).strip())
-            & (df["producto"].str.strip().str.lower() == str(producto).strip().lower()))
-    return df[mask].iloc[0].to_dict() if mask.any() else None
+    dl = df[df["lote"].str.strip() == str(lote).strip()]
+    if dl.empty:
+        return None
+    mask = dl["producto"].map(_norm) == _norm(producto)
+    return dl[mask].iloc[-1].to_dict() if mask.any() else None
 
 def datos_completos(d):
     """Devuelve d solo si tiene origen y ambas fechas válidas (MM/AAAA)."""
@@ -281,7 +284,7 @@ def guardar_datos_productos(lote, items):
         reg = {"lote": str(lote), "producto": it["producto"], "origen": it["origen"],
                "fecha_produccion": it["fecha_prod"], "fecha_vencimiento": it["fecha_venc"]}
         mask = ((df["lote"].str.strip() == str(lote).strip())
-                & (df["producto"].str.strip().str.lower() == it["producto"].strip().lower()))
+                & (df["producto"].map(_norm) == _norm(it["producto"])))
         if mask.any():
             for k, v in reg.items():
                 df.loc[mask, k] = v
@@ -290,11 +293,11 @@ def guardar_datos_productos(lote, items):
     save_sheet(DATOS_SHEET, df)
     _datos_productos_cache.clear()
 
-def reemplazar_datos_lote(lote, df_nuevo):
-    """Reemplaza todas las filas de ese lote por df_nuevo (columnas COLS_DATOS)."""
+def reemplazar_datos_lote(lote, df_nuevo, claves):
+    """Reemplaza las filas de ese lote cuyo producto (normalizado) esté en `claves` por df_nuevo."""
     df = cargar_datos_productos()
-    df = df[df["lote"].str.strip() != str(lote).strip()]
-    df = pd.concat([df, df_nuevo[COLS_DATOS]], ignore_index=True)
+    mask = (df["lote"].str.strip() == str(lote).strip()) & df["producto"].map(_norm).isin(claves)
+    df = pd.concat([df[~mask], df_nuevo[COLS_DATOS]], ignore_index=True)
     save_sheet(DATOS_SHEET, df.reset_index(drop=True))
     _datos_productos_cache.clear()
 
@@ -332,6 +335,152 @@ def normalizar_precio(v):
         return format_clp(int(v))
     digitos = re.sub(r"\D", "", str(v))
     return format_clp(int(digitos)) if digitos else None
+
+# ==================== PRODUCTO MADRE (hoja 'productos') ====================
+def _norm(s):
+    """Minúsculas, sin tildes y sin espacios repetidos (para comparar nombres)."""
+    s = unicodedata.normalize("NFKD", str(s))
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", s).strip().lower()
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _mapa_productos():
+    """Lee la hoja 'productos'. Devuelve (madres, subs):
+    madres: {nombre_normalizado: nombre_madre}
+    subs:   {sub_normalizado: [madres a las que pertenece]}"""
+    df = load_sheet("productos")
+    madres, subs = {}, {}
+    if df.empty or "PRODUCTO" not in df.columns:
+        return madres, subs
+    cols_sub = [c for c in df.columns if re.fullmatch(r"SUB\d+", str(c))]
+    for _, r in df.iterrows():
+        m = str(r["PRODUCTO"]).strip()
+        if not m:
+            continue
+        madres.setdefault(_norm(m), m)
+        for c in cols_sub:
+            s = str(r[c]).strip()
+            if s and _norm(s) != _norm(m):
+                lst = subs.setdefault(_norm(s), [])
+                if m not in lst:
+                    lst.append(m)
+    return madres, subs
+
+def _resolver_madre(prod, grupo, lote, madres, subs):
+    """Devuelve (madre, alternativas). Prioriza una madre presente en el mismo N° del lote,
+    luego una presente en el lote; si no hay, la madre única de la hoja; si no, el producto mismo."""
+    n = _norm(prod)
+    cands = subs.get(n, [])
+    g = {_norm(a) for a in grupo}
+    l = {_norm(a) for a in lote}
+    for pool in (g, l):
+        pres = [m for m in cands if _norm(m) in pool and _norm(m) != n]
+        if pres:
+            return pres[0], pres[1:]
+    if n in madres:
+        return madres[n], []
+    if len(cands) == 1:
+        return cands[0], []
+    return prod, []
+
+def resolver_familias(productos):
+    """productos: lista de dicts del lote. Devuelve (asign, familias):
+    asign:    {producto: (madre, alternativas)}
+    familias: {madre: [productos del lote que la usan]}"""
+    madres, subs = _mapa_productos()
+    nombres = [str(p.get("Productos", "")).strip() for p in productos]
+    por_n = {}
+    for p in productos:
+        por_n.setdefault(p.get("N°"), []).append(str(p.get("Productos", "")).strip())
+    asign, familias = {}, {}
+    for p in productos:
+        prod = str(p.get("Productos", "")).strip()
+        if not prod:
+            continue
+        asign[prod] = _resolver_madre(prod, por_n.get(p.get("N°"), []), nombres, madres, subs)
+    # Mismo N° en el lote = misma materia prima: un producto sin madre propia se une
+    # a la madre principal de su N° (dos madres reales distintas no se mezclan).
+    for n, miembros in por_n.items():
+        if n in (None, "", 0):
+            continue
+        miembros = [m for m in dict.fromkeys(miembros) if m in asign]
+        fams = {}
+        for m in miembros:
+            fams.setdefault(asign[m][0], []).append(m)
+        if len(fams) < 2:
+            continue
+        principal = max(fams, key=lambda k: len(fams[k]))
+        for madre, lst in fams.items():
+            if madre != principal and len(lst) == 1 and lst[0] == madre:
+                asign[lst[0]] = (principal, [])
+    for prod, (m, _) in asign.items():
+        familias.setdefault(m, []).append(prod)
+    return asign, familias
+
+def editor_datos_lote(lote, productos, prefijo):
+    """Tabla editable con UNA fila por producto madre del lote (origen y fechas MM/AAAA).
+    Los envasados y demás presentaciones usan los datos de su madre."""
+    asign, familias = resolver_familias(productos)
+    if not familias:
+        st.info("Este lote no tiene productos")
+        return
+    msg = st.session_state.pop(f"msg_{prefijo}", None)
+    if msg:
+        st.success(msg)
+    st.caption("Ingresa origen y fechas (MM/AAAA) una sola vez por producto madre: "
+               "los envasados (Env.) y demás presentaciones del lote usan esos datos.")
+
+    dp = _datos_productos_cache()
+    dl = dp[dp["lote"].str.strip() == str(lote).strip()]
+    guardados = {_norm(r["producto"]): r for _, r in dl.iterrows()}
+    filas = []
+    for madre, prods in familias.items():
+        g = guardados.get(_norm(madre))
+        filas.append({
+            "producto_madre": madre,
+            "origen": (g["origen"] or None) if g is not None else None,
+            "fecha_produccion": g["fecha_produccion"] if g is not None else "",
+            "fecha_vencimiento": g["fecha_vencimiento"] if g is not None else "",
+            "cubre": len(prods),
+            "incluye": ", ".join(prods),
+        })
+    ed = st.data_editor(
+        pd.DataFrame(filas), hide_index=True, use_container_width=True, num_rows="fixed",
+        key=f"dp_{prefijo}_{lote}_{st.session_state.get('dp_ver', 0)}",
+        column_config={
+            "producto_madre": st.column_config.TextColumn("Producto madre", disabled=True),
+            "origen": st.column_config.SelectboxColumn("País de origen", options=PAISES),
+            "fecha_produccion": st.column_config.TextColumn("Producción (MM/AAAA)", validate=REGEX_FECHA),
+            "fecha_vencimiento": st.column_config.TextColumn("Vencimiento (MM/AAAA)", validate=REGEX_FECHA),
+            "cubre": st.column_config.NumberColumn("Productos", disabled=True),
+            "incluye": st.column_config.TextColumn("Incluye", disabled=True, width="large"),
+        },
+    )
+
+    if st.button("💾 Guardar origen y fechas del lote", type="primary", key=f"guardar_dp_{prefijo}"):
+        ed2 = ed.fillna("").astype(str)
+
+        def _fecha_ok(x):
+            x = x.strip()
+            return x == "" or re.match(REGEX_FECHA, x) is not None
+
+        malas = ed2[~(ed2["fecha_produccion"].map(_fecha_ok) & ed2["fecha_vencimiento"].map(_fecha_ok))]["producto_madre"].tolist()
+        if malas:
+            st.error("Fechas inválidas (usa MM/AAAA) en: " + ", ".join(malas))
+            return
+        algo = ((ed2["origen"].str.strip() != "") | (ed2["fecha_produccion"].str.strip() != "")
+                | (ed2["fecha_vencimiento"].str.strip() != ""))
+        con_datos = ed2[algo][["producto_madre", "origen", "fecha_produccion", "fecha_vencimiento"]].rename(
+            columns={"producto_madre": "producto"})
+        con_datos.insert(0, "lote", str(lote))
+        reemplazar_datos_lote(lote, con_datos, {_norm(m) for m in familias})
+        incompletos = [r["producto"] for _, r in con_datos.iterrows() if not datos_completos(r.to_dict())]
+        texto = f"✅ Datos del lote '{lote}' guardados ({len(con_datos)} productos madre)"
+        if incompletos:
+            texto += " · ⚠️ incompletos (no se usarán hasta completarlos): " + ", ".join(incompletos)
+        st.session_state[f"msg_{prefijo}"] = texto
+        st.session_state.dp_ver = st.session_state.get("dp_ver", 0) + 1
+        st.rerun()
 
 # ==================== APP ====================
 st.title("📋 Lista de Precios")
@@ -394,26 +543,41 @@ with tab2:
             data = st.session_state.data_lote
             st.success(f"**Lote:** {data['lote']} | **Fecha llegada:** {format_fecha_chilena(data['fecha_llegada'])}")
             df_lote_completo = pd.DataFrame(data["productos"])
+            asign, familias = resolver_familias(data["productos"])
+
+            # ---------- ORIGEN Y FECHAS: UNA VEZ POR PRODUCTO MADRE ----------
+            with st.expander(
+                "🌍 Origen y fechas del lote (una vez por producto madre)",
+                expanded=any(not datos_completos(obtener_datos_producto(data["lote"], m)) for m in familias),
+            ):
+                editor_datos_lote(data["lote"], data["productos"], "cons")
 
             # ---------- ETIQUETAS DE TODO EL LOTE (ZIP) ----------
             with st.expander("📦 Descargar todas las etiquetas del lote (productos con datos guardados)"):
                 dp = _datos_productos_cache()
-                listos, sin_datos = [], []
+                listos, faltan, ambiguos = [], {}, []
                 for _, r in df_lote_completo.iterrows():
-                    d = datos_completos(obtener_datos_producto(data["lote"], r["Productos"], dp))
+                    prod_r = str(r["Productos"]).strip()
+                    madre_r, alt_r = asign.get(prod_r, (prod_r, []))
+                    if alt_r:
+                        ambiguos.append(prod_r)
+                    d = datos_completos(obtener_datos_producto(data["lote"], madre_r, dp))
                     if d:
-                        listos.append((r, d))
+                        listos.append((r, {**d, "madre": madre_r}))
                     else:
-                        sin_datos.append(str(r["Productos"]))
-                st.write(f"✅ **{len(listos)}** con datos listos · ⚠️ **{len(sin_datos)}** sin datos completos")
+                        faltan[madre_r] = faltan.get(madre_r, 0) + 1
+                st.write(f"✅ **{len(listos)}** productos con datos listos · "
+                         f"⚠️ **{sum(faltan.values())}** sin datos ({len(faltan)} productos madre)")
                 if listos:
                     st.dataframe(pd.DataFrame([{
-                        "Producto": r["Productos"], "Origen": d["origen"],
+                        "Producto": r["Productos"], "Datos de": d["madre"], "Origen": d["origen"],
                         "Producción": d["fecha_produccion"], "Vencimiento": d["fecha_vencimiento"],
                     } for r, d in listos]), hide_index=True, use_container_width=True)
-                if sin_datos:
-                    st.caption("Sin datos en este lote (se guardan al generar su etiqueta, o complétalos en 🔐 Administración): "
-                               + ", ".join(sin_datos))
+                if faltan:
+                    st.caption("Falta completar origen y fechas de: " + ", ".join(faltan))
+                if ambiguos:
+                    st.warning("⚠️ Estos productos podrían pertenecer a más de un producto madre del lote "
+                               "(se usó el primero): " + ", ".join(ambiguos))
 
                 if st.button("⚡ Generar ZIP de etiquetas", disabled=not listos, key="btn_zip"):
                     barra = st.progress(0.0, text="Generando etiquetas...")
@@ -484,7 +648,14 @@ with tab2:
 
                 st.info(f"**Producto seleccionado:** {producto}")
 
-                guardado = datos_completos(obtener_datos_producto(data["lote"], producto))
+                madre, alternativas = asign.get(producto, (producto, []))
+                if alternativas:
+                    st.warning("⚠️ Este producto podría pertenecer a más de un producto madre de este lote. "
+                               "Elige de cuál tomar los datos.")
+                    madre = st.selectbox("Producto madre", [madre] + alternativas, key=f"madre_{producto}")
+                if _norm(madre) != _norm(producto):
+                    st.caption(f"🔗 Datos tomados del producto madre: **{madre}**")
+                guardado = datos_completos(obtener_datos_producto(data["lote"], madre))
                 usar_guardados = False
                 if guardado:
                     st.success(
@@ -498,7 +669,7 @@ with tab2:
                     )
                     usar_guardados = modo.startswith("♻️")
                 else:
-                    st.caption("Este producto aún no tiene origen ni fechas en este lote: ingrésalos y quedarán guardados para este lote.")
+                    st.caption("Este producto (o su producto madre) aún no tiene origen ni fechas en este lote: ingrésalos y quedarán guardados para todo su grupo.")
                 modo_actual = "guardados" if usar_guardados else "nuevos"
 
                 if usar_guardados:
@@ -523,6 +694,8 @@ with tab2:
                         st.error(f"❌ {st.session_state.etiqueta_error} ('{producto}')")
                 else:
                     st.subheader("📋 Datos para la etiqueta")
+                    st.caption(f"Se guardan para **{madre}** y se aplican a sus {max(1, len(familias.get(madre, [])))} "
+                               "producto(s) de este lote.")
                     origen = st.selectbox("País de Origen", options=["Seleccione un país..."] + PAISES, index=0, key=f"origen_{producto}")
                     fecha_prod = st.date_input("Fecha de Producción", value=None, key=f"prod_{producto}", format="DD/MM/YYYY")
                     fecha_venc = st.date_input("Fecha de Vencimiento", value=None, key=f"venc_{producto}", format="DD/MM/YYYY")
@@ -539,7 +712,7 @@ with tab2:
                         if bytes_et:
                             st.session_state.etiqueta_info = {
                                 "producto": producto, "modo": "nuevos",
-                                "item": {"producto": producto, "origen": origen, "fecha_prod": fp, "fecha_venc": fv},
+                                "item": {"producto": madre, "origen": origen, "fecha_prod": fp, "fecha_venc": fv},
                             }
                             guardar_datos_productos(data["lote"], [st.session_state.etiqueta_info["item"]])
                         else:
@@ -666,60 +839,13 @@ with tab3:
                             st.session_state.adm_msg = f"🗑️ Lote '{lote_edit}' eliminado"
                             st.rerun()
 
-        # ---------- ORIGEN Y FECHAS POR LOTE ----------
+        # ---------- ORIGEN Y FECHAS POR LOTE (POR PRODUCTO MADRE) ----------
         with sub_b:
-            st.caption("Origen y fechas (MM/AAAA) de cada producto **dentro de un lote**. "
-                       "Se usan para generar las etiquetas de ese lote y no afectan a otros lotes.")
             lote_dp = st.selectbox("Lote", [""] + listar_lotes_recibidos(), key="adm_lote_dp",
                                    placeholder="Selecciona un lote...")
             if lote_dp:
                 data_l = cargar_historial_lote(lote_dp)
-                productos_l = []
-                for p in (data_l["productos"] if data_l else []):
-                    n = str(p.get("Productos", "")).strip()
-                    if n and n.lower() not in [x.lower() for x in productos_l]:
-                        productos_l.append(n)
+                if data_l:
+                    editor_datos_lote(lote_dp, data_l["productos"], "adm")
 
-                df_all = cargar_datos_productos()
-                df_l = df_all[df_all["lote"].str.strip() == str(lote_dp).strip()].copy()
-                df_l["_k"] = df_l["producto"].str.strip().str.lower()
-                df_l = df_l.drop_duplicates("_k", keep="last")
-
-                base = pd.DataFrame({"producto": productos_l})
-                base["_k"] = base["producto"].str.lower()
-                tabla = (base.merge(df_l[["_k", "origen", "fecha_produccion", "fecha_vencimiento"]], on="_k", how="left")
-                             .drop(columns="_k").fillna(""))
-                tabla["origen"] = tabla["origen"].apply(lambda x: x if x else None)
-
-                ed = st.data_editor(
-                    tabla, hide_index=True, use_container_width=True, num_rows="fixed",
-                    key=f"adm_dp_{lote_dp}_{st.session_state.get('dp_ver', 0)}",
-                    column_config={
-                        "producto": st.column_config.TextColumn("Producto", disabled=True),
-                        "origen": st.column_config.SelectboxColumn("País de origen", options=PAISES),
-                        "fecha_produccion": st.column_config.TextColumn("Producción (MM/AAAA)", validate=REGEX_FECHA),
-                        "fecha_vencimiento": st.column_config.TextColumn("Vencimiento (MM/AAAA)", validate=REGEX_FECHA),
-                    },
-                )
-
-                if st.button("💾 Guardar datos del lote", type="primary", key="adm_guardar_dp"):
-                    ed2 = ed.fillna("").astype(str)
-
-                    def _fecha_ok(x):
-                        x = x.strip()
-                        return x == "" or re.match(REGEX_FECHA, x) is not None
-
-                    malas = ed2[~(ed2["fecha_produccion"].map(_fecha_ok) & ed2["fecha_vencimiento"].map(_fecha_ok))]["producto"].tolist()
-                    if malas:
-                        st.error("Fechas inválidas (usa MM/AAAA) en: " + ", ".join(malas))
-                    else:
-                        con_datos = ed2[(ed2["origen"].str.strip() != "")
-                                        | (ed2["fecha_produccion"].str.strip() != "")
-                                        | (ed2["fecha_vencimiento"].str.strip() != "")].copy()
-                        con_datos.insert(0, "lote", str(lote_dp))
-                        reemplazar_datos_lote(lote_dp, con_datos)
-                        st.session_state.dp_ver = st.session_state.get("dp_ver", 0) + 1
-                        st.session_state.adm_msg = f"✅ Datos del lote '{lote_dp}' guardados ({len(con_datos)} productos)"
-                        st.rerun()
-
-st.caption("Desarrollado para La Trilla con ❤️ • Datos en Google Sheets v1.3 (administración, datos de productos y etiquetas en lote)")
+st.caption("Desarrollado para La Trilla con ❤️ • Datos en Google Sheets v1.4 (administración, datos por producto madre y etiquetas en lote)")
