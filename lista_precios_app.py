@@ -5,7 +5,6 @@ from datetime import datetime
 import xml.etree.ElementTree as ET
 from io import BytesIO
 import re
-import zipfile
 import hmac
 import unicodedata
 
@@ -154,16 +153,19 @@ def guardar_lote_historial(df, fecha_llegada):
     save_sheet(HISTORIAL_SHEET, df_actual)
     st.success(f"✅ Lote {df['Lote'].iloc[0]} guardado en Google Sheets")
 
-def listar_lotes_recibidos():
+def listar_lotes_con_fecha():
+    """[(lote, 'dd/mm/aaaa')] ordenado por fecha de llegada a bodega, la más reciente primero."""
     df = load_sheet(HISTORIAL_SHEET)
     if df.empty:
         return []
-    # Ordenar por fecha_recepcion descendente (más reciente primero)
-    df["fecha_recepcion_dt"] = pd.to_datetime(df["fecha_recepcion"], errors="coerce")
-    df_sorted = df.sort_values("fecha_recepcion_dt", ascending=False)
-    # Obtener lotes únicos manteniendo el orden (el más reciente primero)
-    lotes_unicos = df_sorted["lote"].drop_duplicates().tolist()
-    return lotes_unicos
+    df["_llegada"] = pd.to_datetime(df["fecha_llegada"], errors="coerce")
+    df["_recep"] = pd.to_datetime(df["fecha_recepcion"], errors="coerce")
+    df = df.sort_values(["_llegada", "_recep"], ascending=False, na_position="last").drop_duplicates("lote")
+    return [(r["lote"], r["_llegada"].strftime("%d/%m/%Y") if pd.notna(r["_llegada"]) else "s/f")
+            for _, r in df.iterrows()]
+
+def listar_lotes_recibidos():
+    return [lote for lote, _ in listar_lotes_con_fecha()]
 
 def cargar_historial_lote(lote):
     df = load_sheet(HISTORIAL_SHEET)
@@ -522,13 +524,14 @@ with tab1:
 # ====================== TAB 2 - CONSULTAR LOTES ======================
 with tab2:
     st.subheader("🔎 Consultar Lotes Recibidos")
-    lotes_disponibles = listar_lotes_recibidos()
-    if lotes_disponibles:
-        opciones = [""] + lotes_disponibles
+    lotes_fechas = listar_lotes_con_fecha()
+    if lotes_fechas:
+        fechas_map = dict(lotes_fechas)
         lote_seleccionado = st.selectbox(
-            "Seleccionar Lote",
-            opciones,
+            "Seleccionar Lote (por fecha de llegada a bodega)",
+            [""] + [l for l, _ in lotes_fechas],
             index=0,
+            format_func=lambda l: "" if not l else f"{fechas_map.get(l, 's/f')} · {l}",
             placeholder="Escribe para buscar o selecciona un lote..."
         )
         if st.button("Cargar Información del Lote", type="primary", disabled=not lote_seleccionado):
@@ -545,95 +548,32 @@ with tab2:
             df_lote_completo = pd.DataFrame(data["productos"])
             asign, familias = resolver_familias(data["productos"])
 
-            # ---------- ORIGEN Y FECHAS: UNA VEZ POR PRODUCTO MADRE ----------
-            with st.expander(
-                "🌍 Origen y fechas del lote (una vez por producto madre)",
-                expanded=any(not datos_completos(obtener_datos_producto(data["lote"], m)) for m in familias),
-            ):
-                editor_datos_lote(data["lote"], data["productos"], "cons")
-
-            # ---------- ETIQUETAS DE TODO EL LOTE (ZIP) ----------
-            with st.expander("📦 Descargar todas las etiquetas del lote (productos con datos guardados)"):
-                dp = _datos_productos_cache()
-                listos, faltan, ambiguos = [], {}, []
-                for _, r in df_lote_completo.iterrows():
-                    prod_r = str(r["Productos"]).strip()
-                    madre_r, alt_r = asign.get(prod_r, (prod_r, []))
-                    if alt_r:
-                        ambiguos.append(prod_r)
-                    d = datos_completos(obtener_datos_producto(data["lote"], madre_r, dp))
-                    if d:
-                        listos.append((r, {**d, "madre": madre_r}))
-                    else:
-                        faltan[madre_r] = faltan.get(madre_r, 0) + 1
-                st.write(f"✅ **{len(listos)}** productos con datos listos · "
-                         f"⚠️ **{sum(faltan.values())}** sin datos ({len(faltan)} productos madre)")
-                if listos:
-                    st.dataframe(pd.DataFrame([{
-                        "Producto": r["Productos"], "Datos de": d["madre"], "Origen": d["origen"],
-                        "Producción": d["fecha_produccion"], "Vencimiento": d["fecha_vencimiento"],
-                    } for r, d in listos]), hide_index=True, use_container_width=True)
-                if faltan:
-                    st.caption("Falta completar origen y fechas de: " + ", ".join(faltan))
-                if ambiguos:
-                    st.warning("⚠️ Estos productos podrían pertenecer a más de un producto madre del lote "
-                               "(se usó el primero): " + ", ".join(ambiguos))
-
-                if st.button("⚡ Generar ZIP de etiquetas", disabled=not listos, key="btn_zip"):
-                    barra = st.progress(0.0, text="Generando etiquetas...")
-                    zbuf, usados, fallidos, nombres = BytesIO(), [], [], set()
-                    with zipfile.ZipFile(zbuf, "w", zipfile.ZIP_DEFLATED) as z:
-                        for i, (r, d) in enumerate(listos):
-                            prod = str(r["Productos"])
-                            b, err = generar_etiqueta_producto(
-                                prod, data["lote"], r["Precio Venta Bruto"], r["Precio KG"],
-                                d["fecha_produccion"], d["fecha_vencimiento"], d["origen"])
-                            if b:
-                                nombre = f"{prod} - {data['lote']}.ezpx".replace("/", "-")
-                                if nombre in nombres:
-                                    nombre = f"{prod} ({i + 1}) - {data['lote']}.ezpx".replace("/", "-")
-                                nombres.add(nombre)
-                                z.writestr(nombre, b)
-                                usados.append({"producto": prod, "origen": d["origen"],
-                                               "fecha_prod": d["fecha_produccion"],
-                                               "fecha_venc": d["fecha_vencimiento"]})
-                            else:
-                                fallidos.append(f"{prod}: {err}")
-                            barra.progress((i + 1) / len(listos), text=f"Generando etiquetas... {i + 1}/{len(listos)}")
-                    barra.empty()
-                    st.session_state.zip_lote = {"lote": data["lote"], "bytes": zbuf.getvalue(),
-                                                 "usados": usados, "fallidos": fallidos}
-
-                zip_info = st.session_state.get("zip_lote")
-                if zip_info and zip_info["lote"] == data["lote"]:
-                    for f in zip_info["fallidos"]:
-                        st.warning(f"⚠️ {f}")
-                    if zip_info["usados"]:
-                        st.download_button(
-                            f"⬇️ Descargar ZIP ({len(zip_info['usados'])} etiquetas)",
-                            data=zip_info["bytes"],
-                            file_name=f"Etiquetas - {data['lote']}.zip",
-                            mime="application/zip",
-                            type="primary",
-                            key="dl_zip",
-                        )
-
             # ---------- TABLA Y ETIQUETA INDIVIDUAL ----------
             df_lote = df_lote_completo.copy()
-            opciones_f = ["Todos"] + sorted([str(p) for p in df_lote["Productos"].tolist() if p is not None and str(p).strip() != ""])
-            busqueda_precio = st.selectbox("🔎 Filtrar producto", options=opciones_f, key="busqueda_precio")
-            if busqueda_precio != "Todos":
-                df_lote = df_lote[df_lote["Productos"] == busqueda_precio].reset_index(drop=True)
-
-            styled_lote = style_by_numero(df_lote)
-            selection = st.dataframe(
-                styled_lote,
-                use_container_width=True,
-                hide_index=True,
-                on_select="rerun",
-                selection_mode="single-row",
-                key=f"tabla_lote_{lote_seleccionado}"
+            busqueda = st.text_input(
+                "🔎 Buscar producto",
+                placeholder="Escribe una o más palabras (ej: pasas 1kg, clavo, env 250)...",
+                key=f"busqueda_{data['lote']}",
             )
+            if busqueda.strip():
+                palabras = _norm(busqueda).split()
+                coincide = df_lote["Productos"].map(lambda p: all(w in _norm(p) for w in palabras))
+                df_lote = df_lote[coincide].reset_index(drop=True)
+                st.caption(f"{len(df_lote)} coincidencia(s)")
+
+            if df_lote.empty:
+                st.info("No hay productos que coincidan con la búsqueda.")
+                selection = {"selection": {"rows": []}}
+            else:
+                styled_lote = style_by_numero(df_lote)
+                selection = st.dataframe(
+                    styled_lote,
+                    use_container_width=True,
+                    hide_index=True,
+                    on_select="rerun",
+                    selection_mode="single-row",
+                    key=f"tabla_lote_{data['lote']}_{_norm(busqueda)}"
+                )
 
             if len(selection["selection"]["rows"]) > 0:
                 fila = df_lote.iloc[selection["selection"]["rows"][0]]
