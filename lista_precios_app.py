@@ -572,13 +572,17 @@ function parse(xml){
     font:(g.getAttribute('FontCmd')||'').trim(),fw:num(g.getAttribute('FontWidth'),1000)/1000,
     data:tx(g,'Data'),w:num(tx(g,'Width')),h:num(tx(g,'Height')),hs:num(tx(g,'HStroke'),4),vs:num(tx(g,'VStroke'),4),
     bmp:tx(g,'BitmapCmd'),narrow:num(g.getAttribute('Narrow'),2),
+    fid:g.getAttribute('FontId')||'',ident:tx(g,'Identifier'),stored:tx(g,'LoadToDevice')==='true'&&!!tx(g,'Identifier'),
+    bch:num(g.getAttribute('Height')),bwd:num(g.getAttribute('Width'),6),sym:g.getAttribute('Symbology')||'',cap:g.getAttribute('CaptionAlignment')||'',
+    fmx:num(g.getAttribute('FontWidth'),1),fmy:num(g.getAttribute('FontHeight'),1),gap:num(g.getAttribute('TextSpace'),0),
     b:br?{x:num(tx(br,'X')),y:num(tx(br,'Y')),w:num(tx(br,'Width')),h:num(tx(br,'Height'))}:null}});
 }
 const pf=s=>{const p=s.split(',');return{name:p[0].trim(),pt:num(p[1],7),bold:(p[2]||'').trim()==='B'}};
-const fontCss=f=>`${f.bold?'bold ':''}${PX(f.pt)}px ${stacks.get(f.name)}`;
+const fontCss=f=>`${f.bold?'bold ':''}${PX(f.pt)}px ${stacks.get(f.name)||'"'+f.name+'",Impact,Arial,sans-serif'}`;
+const HYB=()=>shapes.some(s=>(s.t==='A'&&s.fid)||(s.t==='Y'&&s.stored));
 
 async function loadFonts(){
-  const names=[...new Set(shapes.filter(s=>s.font).map(s=>pf(s.font).name))];
+  const names=[...new Set(shapes.filter(s=>s.font&&s.t!=='A').map(s=>pf(s.font).name))];
   const css=names.map((n,i)=>`@font-face{font-family:"lt${i}";src:local("${n}"),local("${n.replace(/ /g,'-')}"),local("${n.replace(/ /g,'')}")}`).join('');
   const st=document.createElement('style');st.textContent=css;document.head.appendChild(st);
   await Promise.all(names.map((n,i)=>document.fonts.load(`20px "lt${i}"`).catch(()=>0)));
@@ -674,6 +678,7 @@ function draw(){
       x.fillRect(X,Y,Wd,s.vs);x.fillRect(X,Y+Ht-s.vs,Wd,s.vs);
       x.fillRect(X,Y,s.hs,Ht);x.fillRect(X+Wd-s.hs,Y,s.hs,Ht)}
     else if(s.t==='Y')drawBmp(x,s);
+    else if(s.t==='A'){const f=pf(s.font);drawText(x,{...s,font:f.name+','+(f.pt/2),b:null,fw:1})}
     else if(s.t==='W')drawText(x,s);
     else if(s.t==='B')drawEan(x,s);
     else log('Objeto no soportado: '+s.t);
@@ -699,8 +704,66 @@ function toBmp(){
   const c=$('prev');c.width=W;c.height=H;c.getContext('2d').putImageData(pv,0,0);
   return o;
 }
+// ---------- Modo nativo (como GoLabel): logo, Bebas Neue, código de barras, líneas y cuadros salen de la impresora;
+// el texto en fuentes de Windows va como pequeñas imágenes (comando Q) en su posición.
+// Página 800x400 puntos, giro fijo 90° antihorario: X'=Y del diseño, Y'=400-X del diseño.
+function textLayer(){
+  const c=document.createElement('canvas');c.width=400;c.height=800;const x=c.getContext('2d');
+  x.fillStyle='#fff';x.fillRect(0,0,400,800);x.fillStyle='#000';
+  for(const s of shapes){if(s.t==='W')drawText(x,s);else if(s.t==='Y'&&!s.stored)drawBmp(x,s)}
+  const src=x.getImageData(0,0,400,800).data,thr=num($('umbral').value,145),W=800,H=400,L=new Uint8Array(W*H);
+  for(let by=0;by<H;by++)for(let bx=0;bx<W;bx++){const q=(bx*400+(H-1-by))*4;
+    if((0.3*src[q]+0.59*src[q+1]+0.11*src[q+2])<thr)L[by*W+bx]=1}
+  return L;
+}
+function medir(s){
+  const f=pf(s.font),k=s.fw*(cal.get(f.name)||1),c=document.createElement('canvas').getContext('2d');c.font=fontCss(f);
+  return Math.ceil(Math.max(...s.data.split(/\r?\n/).map(l=>c.measureText(l).width))*k)+2;
+}
+function buildHybrid(qty){
+  const e=new TextEncoder(),nl='\r\n',v=id=>$(id).value,PH=400,body=[],cmds=[];
+  const T=t=>{cmds.push(t);body.push(e.encode(t))},L=textLayer();
+  const q=(x,y,wb,h)=>{
+    if(y<0){h+=y;y=0}if(x<0)x=0;if(x+wb*8>800)wb=Math.max(1,Math.floor((800-x)/8));if(y+h>PH)h=PH-y;if(h<=0)return;
+    const o=new Uint8Array(wb*h);
+    for(let j=0;j<h;j++)for(let i=0;i<wb*8;i++){const px=x+i,py=y+j;
+      if(px>=0&&px<800&&py>=0&&py<PH&&L[py*800+px])o[j*wb+(i>>3)]|=0x80>>(i&7)}
+    T(`Q${x},${y},${wb},${h}\n`);body.push(o);
+  };
+  for(const s of shapes){
+    if(s.t==='R'){const x1=R(s.y);T(`R${x1},${R(PH-s.x-s.w)},${x1+R(s.h)-1},${R(PH-s.x)-1},${s.hs},${s.vs}${nl}`)}
+    else if(s.t==='L'){const x1=R(s.y);T(`Lo,${x1},${R(PH-s.x-s.w)},${x1+R(s.h)-1},${R(PH-s.x)-1}${nl}`)}
+    else if(s.t==='B'){
+      if(s.sym&&s.sym!=='EAN13')throw new Error('Código de barras '+s.sym+' no soportado en modo nativo');
+      const g=ean(s.data.replace(/\D/g,''));if(!g)throw new Error('Código de barras inválido: '+s.data);
+      T(`BE,${R(s.y)},${R(PH-s.x)},${R(s.narrow)},${s.bwd},${s.bch},0,${s.cap==='None'?0:1},${g.dg}${nl}`);
+    }
+    else if(s.t==='A'){
+      if(s.rot)throw new Error('Texto nativo girado no soportado');
+      T(`V${s.fid},${R(s.y)},${R(PH-s.x)},${s.fmx},${s.fmy},${s.gap},3E,${s.data.replace(/\r?\n/g,' ')}${nl}`);
+    }
+    else if(s.t==='Y'&&s.stored)T(`Y${R(s.y)},${R(PH-s.x-(s.b?s.b.w:0))},${s.ident}${nl}`);
+    else if(s.t==='Y'&&s.b){q(R(s.y),R(PH-s.x-Math.ceil(s.b.w)),Math.ceil(s.b.h/8),Math.ceil(s.b.w))}
+    else if(s.t==='W'){
+      if(!s.b)throw new Error('Texto sin medidas en la etiqueta');
+      const m=medir(s),bw=s.rot?s.b.w:Math.max(s.b.w,m),bh=s.rot?Math.max(s.b.h,m):s.b.h;
+      q(R(s.y),s.rot?R(PH-s.x):R(PH-s.x-Math.ceil(bw)),Math.ceil(bh/8),Math.ceil(bw));
+    }
+    else log('Objeto no soportado: '+s.t);
+  }
+  const cat=a=>{const n=a.reduce((t,u)=>t+u.length,0),o=new Uint8Array(n);let p=0;for(const u of a){o.set(u,p);p+=u.length}return o};
+  const bodyBytes=cat(body),por_p=v('modo')==='p'||qty>20;
+  const head=`^Q${v('alto')},${v('gap')}${nl}^W${v('ancho')}${nl}^H${v('osc')}${nl}^S${v('vel')}${nl}^AD${nl}^C1${nl}^R0${nl}~Q+0${nl}^O0${nl}^D0${nl}^E${v('parada')}${nl}~R255${nl}^XSET,ROTATION,0${nl}`;
+  const parts=[e.encode(head)];
+  if(por_p)parts.push(e.encode(`^P${qty}${nl}^L${nl}`),bodyBytes,e.encode(`E${nl}`));
+  else for(let i=0;i<qty;i++)parts.push(e.encode(`^P1${nl}^L${nl}`),bodyBytes,e.encode(`E${nl}`));
+  window.__trillaCmds=cmds;
+  return cat(parts);
+}
 function buildJob(qty){
-  const bmp=toBmp(),e=new TextEncoder(),nl='\r\n',v=id=>$(id).value;
+  const bmp=toBmp();
+  if(HYB())return buildHybrid(qty);
+  const e=new TextEncoder(),nl='\r\n',v=id=>$(id).value;
   const head=`~MDELG,LBL${nl}~EB,LBL,${bmp.length}${nl}`;
   const tail=`^Q${v('alto')},${v('gap')}${nl}^W${v('ancho')}${nl}^H${v('osc')}${nl}^S${v('vel')}${nl}^AD${nl}^E${v('parada')}${nl}^C1${nl}`;
   const blq=`^P1${nl}^L${nl}Y0,0,LBL${nl}E${nl}`,por_p=v('modo')==='p';
@@ -787,7 +850,10 @@ $('head').onclick=async()=>{
 // ---------- Arranque: dibuja la vista previa ----------
 ready=(async()=>{
   shapes=parse(new TextDecoder('utf-8').decode(Uint8Array.from(atob(EZPX_B64),c=>c.charCodeAt(0))));
-  await loadFonts();draw();buildJob(1);
+  await loadFonts();
+  if(HYB()){$('giro').value='ccw';$('r180').checked=false;$('giro').disabled=true;$('r180').disabled=true;
+    const fo=$('fonts');if(!fo.textContent){fo.className='small';fo.textContent='⚡ Modo nativo: logo, Bebas Neue, código de barras y líneas se imprimen desde la impresora (giro fijo 90° antihorario).'}}
+  draw();buildJob(1);
 })();
 ready.catch(e=>setStatus('❌ No se pudo preparar la etiqueta: '+(e&&e.message||e),'bad'));
 window.__trillaPanelReady=ready;
@@ -1111,4 +1177,4 @@ with tab3:
                 if data_l:
                     editor_datos_lote(lote_dp, data_l["productos"], "adm")
 
-st.caption("Desarrollado para La Trilla con ❤️ • Datos en Google Sheets v1.5 (impresión directa Godex G300)")
+st.caption("Desarrollado para La Trilla con ❤️ • Datos en Google Sheets v1.6 (impresión directa Godex G300, modo nativo)")
