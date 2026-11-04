@@ -535,6 +535,7 @@ canvas#prev{width:340px;max-width:100%;border:1px solid #bbb;background:#fff;dis
     <label>Oscuridad <input type="number" id="osc" value="8"></label>
     <label>Velocidad <input type="number" id="vel" value="3"></label>
     <label>Parada mm <input type="number" id="parada" value="12"></label>
+    <label>Copias <select id="modo"><option value="bloques">Bloques (arranca rápido)</option><option value="p">Comando ^P</option></select></label>
    </div>
    <div class="bar">
     <label>Impresora <select id="prn"><option value="">(automática: Godex)</option></select></label>
@@ -701,14 +702,16 @@ function toBmp(){
 function buildJob(qty){
   const bmp=toBmp(),e=new TextEncoder(),nl='\r\n',v=id=>$(id).value;
   const head=`~MDELG,LBL${nl}~EB,LBL,${bmp.length}${nl}`;
-  const tail=`^Q${v('alto')},${v('gap')}${nl}^W${v('ancho')}${nl}^H${v('osc')}${nl}^S${v('vel')}${nl}^AD${nl}^E${v('parada')}${nl}^C1${nl}^P${qty}${nl}^L${nl}Y0,0,LBL${nl}E${nl}`;
-  const a=e.encode(head),b=e.encode(tail),out=new Uint8Array(a.length+bmp.length+b.length);
+  const tail=`^Q${v('alto')},${v('gap')}${nl}^W${v('ancho')}${nl}^H${v('osc')}${nl}^S${v('vel')}${nl}^AD${nl}^E${v('parada')}${nl}^C1${nl}`;
+  const blq=`^P1${nl}^L${nl}Y0,0,LBL${nl}E${nl}`,por_p=v('modo')==='p';
+  const body=por_p?`^P${qty}${nl}^L${nl}Y0,0,LBL${nl}E${nl}`:blq.repeat(qty);
+  const a=e.encode(head),b=e.encode(tail+body),out=new Uint8Array(a.length+bmp.length+b.length);
   out.set(a,0);out.set(bmp,a.length);out.set(b,a.length+bmp.length);
   return out;
 }
 
 // ---------- Ajustes guardados en este navegador ----------
-const SAVED=['giro','r180','umbral','bch','dpx','ancho','alto','gap','osc','vel','parada'];
+const SAVED=['giro','r180','umbral','bch','dpx','ancho','alto','gap','osc','vel','parada','modo'];
 try{const st=JSON.parse(localStorage.getItem('trilla_g300_cfg')||'{}');
   SAVED.forEach(id=>{if(id in st){const el=$(id);el.type==='checkbox'?el.checked=!!st[id]:el.value=st[id]}})}catch(e){}
 const saveCfg=()=>{try{const st={};SAVED.forEach(id=>{const el=$(id);st[id]=el.type==='checkbox'?el.checked:el.value});
