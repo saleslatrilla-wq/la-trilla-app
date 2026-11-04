@@ -7,6 +7,8 @@ from io import BytesIO
 import re
 import hmac
 import unicodedata
+import base64
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="La Trilla - Lista de Precios", layout="wide", page_icon="📋")
 
@@ -484,6 +486,310 @@ def editor_datos_lote(lote, productos, prefijo):
         st.session_state.dp_ver = st.session_state.get("dp_ver", 0) + 1
         st.rerun()
 
+# ==================== IMPRESIÓN DIRECTA (Godex G300 vía QZ Tray) ====================
+# El panel corre en el NAVEGADOR del computador donde está la impresora: dibuja la etiqueta con las
+# fuentes de ese equipo (Bebas Neue, Bahnschrift, Arial), la pasa a blanco y negro y la envía por
+# QZ Tray como imagen EZPL. Requiere QZ Tray abierto en ese computador.
+PANEL_IMPRESION_HTML = r"""<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<style>
+*{box-sizing:border-box}
+body{font:14px/1.35 "Source Sans Pro",system-ui,-apple-system,"Segoe UI",sans-serif;margin:0;padding:2px 4px;color:#31333f;background:transparent}
+.wrap{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+.ctl{flex:1 1 300px;min-width:280px}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+label{white-space:nowrap}
+input[type=number],select{padding:4px 6px;border:1px solid #c5c8d0;border-radius:6px;background:#fff;font:inherit}
+input[type=number]{width:64px}
+button{padding:7px 16px;border:1px solid #c5c8d0;border-radius:8px;background:#fff;font:inherit;cursor:pointer}
+button.primary{background:#ff4b4b;border-color:#ff4b4b;color:#fff;font-weight:600}
+button:disabled{opacity:.55;cursor:default}
+#status{margin-top:8px;min-height:20px;font-weight:600}
+.ok{color:#1a7f37}.bad{color:#c62828}.warn{color:#9a6700}.small{font-size:12px;color:#6b7280}
+details{margin-top:10px}summary{cursor:pointer;color:#555}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(130px,1fr));gap:6px 14px;margin:8px 0}
+.grid label{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.prev{flex:0 0 auto}
+canvas#prev{width:340px;max-width:100%;border:1px solid #bbb;background:#fff;display:block}
+#log{font:12px monospace;color:#6b7280;white-space:pre-wrap}
+</style></head><body>
+<div class="wrap">
+ <div class="ctl">
+  <div class="small" id="titulo"></div>
+  <div class="bar">
+   <label>Cantidad <input type="number" id="qty" min="1" max="999" value="1"></label>
+   <button class="primary" id="print">🖨️ Imprimir</button>
+  </div>
+  <div id="status"></div>
+  <div id="fonts" class="small"></div>
+  <details><summary>⚙️ Ajustes de impresión</summary>
+   <div class="grid">
+    <label>Giro <select id="giro"><option value="ccw">90° antihorario</option><option value="cw">90° horario</option></select></label>
+    <label>Girar 180° <input type="checkbox" id="r180"></label>
+    <label>Umbral negro <input type="number" id="umbral" value="145" min="40" max="220"></label>
+    <label>Alto barras <input type="number" id="bch" value="46" min="30" max="56"></label>
+    <label>Dígitos px <input type="number" id="dpx" value="20" min="12" max="24"></label>
+    <label>Ancho mm <input type="number" id="ancho" value="100"></label>
+    <label>Alto mm <input type="number" id="alto" value="50"></label>
+    <label>Gap mm <input type="number" id="gap" value="3"></label>
+    <label>Oscuridad <input type="number" id="osc" value="8"></label>
+    <label>Velocidad <input type="number" id="vel" value="3"></label>
+    <label>Parada mm <input type="number" id="parada" value="12"></label>
+   </div>
+   <div class="bar">
+    <label>Impresora <select id="prn"><option value="">(automática: Godex)</option></select></label>
+    <button id="buscar">Buscar</button>
+    <button id="head" title="Imprime el patrón de prueba del cabezal">Prueba de cabezal</button>
+   </div>
+   <div class="small">Los ajustes se guardan en este navegador.</div>
+  </details>
+  <div id="log"></div>
+ </div>
+ <div class="prev"><div class="small">Vista previa de lo que se envía</div><canvas id="prev"></canvas></div>
+</div>
+<canvas id="design" width="400" height="800" style="display:none"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
+<script>
+(()=>{
+const EZPX_B64="__EZPX_B64__", TITULO=__TITULO__;
+const $=id=>document.getElementById(id), PX=pt=>pt*203/72, R=Math.round;
+const logEl=$('log'),log=m=>{logEl.textContent+=m+'\n'};
+const ch=(e,n)=>[...e.children].find(c=>c.localName===n);
+const tx=(e,n)=>{const c=ch(e,n);return c?c.textContent:''};
+const num=(v,d=0)=>{const n=parseFloat(v);return isNaN(n)?d:n};
+const b64=u=>{let s='';for(let i=0;i<u.length;i+=8192)s+=String.fromCharCode.apply(null,u.subarray(i,i+8192));return btoa(s)};
+const setStatus=(m,c)=>{const s=$('status');s.className=c||'';s.textContent=m};
+let shapes=[], stacks=new Map(), cal=new Map(), ready=null;
+$('titulo').textContent=TITULO;
+
+function parse(xml){
+  const ql=new DOMParser().parseFromString(xml,'application/xml').getElementsByTagName('qlabel')[0];
+  if(!ql)throw new Error('El archivo de etiqueta no tiene diseño (qlabel)');
+  return [...ql.children].map(g=>{const br=ch(g,'BoundRect');return{
+    t:tx(g,'Name'),x:num(g.getAttribute('X')),y:num(g.getAttribute('Y')),rot:g.getAttribute('Direction')==='Angle90',
+    font:(g.getAttribute('FontCmd')||'').trim(),fw:num(g.getAttribute('FontWidth'),1000)/1000,
+    data:tx(g,'Data'),w:num(tx(g,'Width')),h:num(tx(g,'Height')),hs:num(tx(g,'HStroke'),4),vs:num(tx(g,'VStroke'),4),
+    bmp:tx(g,'BitmapCmd'),narrow:num(g.getAttribute('Narrow'),2),
+    b:br?{x:num(tx(br,'X')),y:num(tx(br,'Y')),w:num(tx(br,'Width')),h:num(tx(br,'Height'))}:null}});
+}
+const pf=s=>{const p=s.split(',');return{name:p[0].trim(),pt:num(p[1],7),bold:(p[2]||'').trim()==='B'}};
+const fontCss=f=>`${f.bold?'bold ':''}${PX(f.pt)}px ${stacks.get(f.name)}`;
+
+async function loadFonts(){
+  const names=[...new Set(shapes.filter(s=>s.font).map(s=>pf(s.font).name))];
+  const css=names.map((n,i)=>`@font-face{font-family:"lt${i}";src:local("${n}"),local("${n.replace(/ /g,'-')}"),local("${n.replace(/ /g,'')}")}`).join('');
+  const st=document.createElement('style');st.textContent=css;document.head.appendChild(st);
+  await Promise.all(names.map((n,i)=>document.fonts.load(`20px "lt${i}"`).catch(()=>0)));
+  const c=document.createElement('canvas').getContext('2d');
+  const w=f=>{c.font=f;return c.measureText('WWiiMMll123').width}, base=w('40px monospace'), falta=[];
+  names.forEach((n,i)=>{
+    const ok=w(`40px "lt${i}",monospace`)!==base||w(`40px "${n}",monospace`)!==base;
+    stacks.set(n,`"lt${i}","${n}","Bahnschrift",Arial,sans-serif`);
+    if(!ok)falta.push(n);
+  });
+  calibrate();
+  if(falta.length){$('fonts').className='small warn';$('fonts').textContent='⚠️ Fuentes no encontradas en este equipo: '+falta.join(', ')}
+}
+// Las variantes condensadas de Bahnschrift pueden no resolverse en el navegador y salir más anchas.
+// GoLabel guarda el ancho real de cada texto (BoundRect): se usa para ajustar el ancho por familia.
+function calibrate(){
+  cal.clear();
+  const c=document.createElement('canvas').getContext('2d'), groups={};
+  for(const s of shapes){
+    if(s.t!=='W'||!s.b||!s.font)continue;
+    const f=pf(s.font),L=s.rot?s.b.h:s.b.w;if(L<8)continue;
+    c.font=fontCss(f);
+    const w=Math.max(...s.data.split(/\r?\n/).map(l=>c.measureText(l).width))*s.fw;
+    if(w>0)(groups[f.name]=groups[f.name]||[]).push(L/w);
+  }
+  for(const [n,a] of Object.entries(groups)){
+    a.sort((x,y)=>x-y);const med=a[a.length>>1];
+    if(a.length>=3&&Math.abs(med-1)>0.06)cal.set(n,Math.min(1.25,Math.max(0.6,med)));
+  }
+}
+
+function ean(d){
+  const L=['0001101','0011001','0010011','0111101','0100011','0110001','0101111','0111011','0110111','0001011'];
+  const G=['0100111','0110011','0011011','0100001','0011101','0111001','0000101','0010001','0001001','0010111'];
+  const Rr=['1110010','1100110','1101100','1000010','1011100','1001110','1010000','1000100','1001000','1110100'];
+  const P=['LLLLLL','LLGLGG','LLGGLG','LLGGGL','LGLLGG','LGGLLG','LGGGLL','LGLGLG','LGLGGL','LGGLGL'];
+  const chk=s=>{let t=0;for(let i=0;i<12;i++)t+=(+s[i])*(i%2?3:1);return(10-t%10)%10};
+  if(d.length===12)d+=chk(d);
+  if(d.length!==13)return null;
+  if(+d[12]!==chk(d))log(`Aviso: el dígito verificador de ${d} no es válido (debería ser ${chk(d)})`);
+  let b='101';for(let i=1;i<=6;i++)b+=(P[+d[0]][i-1]==='L'?L:G)[+d[i]];
+  b+='01010';for(let i=7;i<=12;i++)b+=Rr[+d[i]];
+  return{bits:b+'101',dg:d};
+}
+
+function drawBmp(x,s){
+  const b=Uint8Array.from(atob(s.bmp),c=>c.charCodeAt(0)),dv=new DataView(b.buffer);
+  const off=dv.getUint32(10,true),w=dv.getInt32(18,true),h=dv.getInt32(22,true),bpp=dv.getUint16(28,true);
+  if(bpp!==32&&bpp!==24){log('Logo: BMP de '+bpp+' bits no soportado');return}
+  const by=bpp/8,rb=Math.ceil(w*by/4)*4,ah=Math.abs(h),im=x.createImageData(w,ah);
+  for(let j=0;j<ah;j++){const sr=h>0?ah-1-j:j;for(let i=0;i<w;i++){const p=off+sr*rb+i*by,q=(j*w+i)*4;
+    im.data[q]=b[p+2];im.data[q+1]=b[p+1];im.data[q+2]=b[p];im.data[q+3]=255}}
+  const t=document.createElement('canvas');t.width=w;t.height=ah;t.getContext('2d').putImageData(im,0,0);
+  x.drawImage(t,R(s.b?s.b.x:s.x),R(s.b?s.b.y:s.y));
+}
+function drawText(x,s){
+  const f=pf(s.font),lines=s.data.split(/\r?\n/);
+  x.save();x.font=fontCss(f);x.textBaseline='alphabetic';
+  const m=x.measureText('Hg'),asc=m.fontBoundingBoxAscent,desc=m.fontBoundingBoxDescent;
+  const lh=s.b?(s.rot?s.b.w:s.b.h)/lines.length:asc+desc, k=s.fw*(cal.get(f.name)||1);
+  lines.forEach((l,i)=>{
+    const v=i*lh+(lh-asc-desc)/2+asc;
+    x.save();
+    if(s.rot){x.translate(R(s.x-v),R(s.y));x.rotate(Math.PI/2)}
+    else x.translate(R(s.x),R(s.y+v));
+    x.scale(k,1);x.fillText(l,0,0);x.restore();
+  });
+  x.restore();
+}
+// EAN-13 con las medidas de GoLabel (203 dpi): módulo 2 pt, guardas +8. Coordenadas ENTERAS:
+// un borde en posición decimal ensancha las barras y el lector no puede leerlo.
+function drawEan(x,s){
+  const e=ean(s.data.replace(/\D/g,''));if(!e){log('Código de barras inválido: '+s.data);return}
+  const n=Math.max(1,R(s.narrow)),xr=R(s.x),y0=R(s.y)+19;
+  const bh=Math.max(30,R(num($('bch').value,46))),gh=bh+8,dp=Math.max(12,R(num($('dpx').value,20)));
+  const guard=i=>i<3||(i>=45&&i<50)||i>=92;
+  x.fillStyle='#000';
+  for(let i=0;i<95;i++)if(e.bits[i]==='1'){const h=guard(i)?gh:bh;x.fillRect(xr-h,y0+i*n,h,n)}
+  x.save();x.translate(xr,y0);x.rotate(Math.PI/2);
+  x.font=`${dp}px "Microsoft Sans Serif",Arial,sans-serif`;x.textAlign='center';x.textBaseline='alphabetic';
+  const vb=R(bh+3+dp*0.716);
+  x.fillText(e.dg[0],-4.5*n,vb);
+  for(let i=1;i<=6;i++)x.fillText(e.dg[i],(3+3.5+7*(i-1))*n,vb);
+  for(let i=7;i<=12;i++)x.fillText(e.dg[i],(50+3.5+7*(i-7))*n,vb);
+  x.restore();
+}
+function draw(){
+  const c=$('design');c.width=400;c.height=800;const x=c.getContext('2d');
+  x.fillStyle='#fff';x.fillRect(0,0,400,800);x.fillStyle='#000';
+  for(const s of shapes){
+    if(s.t==='L')x.fillRect(R(s.x),R(s.y),R(s.w),R(s.h));
+    else if(s.t==='R'){const X=R(s.x),Y=R(s.y),Wd=R(s.w),Ht=R(s.h);
+      x.fillRect(X,Y,Wd,s.vs);x.fillRect(X,Y+Ht-s.vs,Wd,s.vs);
+      x.fillRect(X,Y,s.hs,Ht);x.fillRect(X+Wd-s.hs,Y,s.hs,Ht)}
+    else if(s.t==='Y')drawBmp(x,s);
+    else if(s.t==='W')drawText(x,s);
+    else if(s.t==='B')drawEan(x,s);
+    else log('Objeto no soportado: '+s.t);
+  }
+}
+
+// Giro exacto píxel a píxel (sin remuestreo) y paso a blanco/negro.
+function toBmp(){
+  const W=800,H=400,src=$('design').getContext('2d').getImageData(0,0,400,800).data;
+  const thr=num($('umbral').value,145),cw=$('giro').value==='cw',r180=$('r180').checked;
+  const rb=W/8,size=62+rb*H,o=new Uint8Array(size),dv=new DataView(o.buffer);
+  o[0]=66;o[1]=77;dv.setUint32(2,size,true);dv.setUint32(10,62,true);dv.setUint32(14,40,true);
+  dv.setInt32(18,W,true);dv.setInt32(22,H,true);dv.setUint16(26,1,true);dv.setUint16(28,1,true);
+  dv.setUint32(34,rb*H,true);dv.setUint32(46,2,true);dv.setUint32(50,2,true);o.set([0,0,0,0,255,255,255,0],54);
+  const pv=new ImageData(W,H);
+  for(let by=0;by<H;by++)for(let bx=0;bx<W;bx++){
+    let px=bx,py=by;if(r180){px=W-1-px;py=H-1-py}
+    const xd=cw?py:H-1-py,yd=cw?W-1-px:px,q=(yd*400+xd)*4;
+    const white=(0.3*src[q]+0.59*src[q+1]+0.11*src[q+2])>=thr,p=(by*W+bx)*4;
+    if(white)o[62+(H-1-by)*rb+(bx>>3)]|=0x80>>(bx&7);
+    pv.data[p]=pv.data[p+1]=pv.data[p+2]=white?255:0;pv.data[p+3]=255;
+  }
+  const c=$('prev');c.width=W;c.height=H;c.getContext('2d').putImageData(pv,0,0);
+  return o;
+}
+function buildJob(qty){
+  const bmp=toBmp(),e=new TextEncoder(),nl='\r\n',v=id=>$(id).value;
+  const head=`~MDELG,LBL${nl}~EB,LBL,${bmp.length}${nl}`;
+  const tail=`^Q${v('alto')},${v('gap')}${nl}^W${v('ancho')}${nl}^H${v('osc')}${nl}^S${v('vel')}${nl}^AD${nl}^E${v('parada')}${nl}^C1${nl}^P${qty}${nl}^L${nl}Y0,0,LBL${nl}E${nl}`;
+  const a=e.encode(head),b=e.encode(tail),out=new Uint8Array(a.length+bmp.length+b.length);
+  out.set(a,0);out.set(bmp,a.length);out.set(b,a.length+bmp.length);
+  return out;
+}
+
+// ---------- Ajustes guardados en este navegador ----------
+const SAVED=['giro','r180','umbral','bch','dpx','ancho','alto','gap','osc','vel','parada'];
+try{const st=JSON.parse(localStorage.getItem('trilla_g300_cfg')||'{}');
+  SAVED.forEach(id=>{if(id in st){const el=$(id);el.type==='checkbox'?el.checked=!!st[id]:el.value=st[id]}})}catch(e){}
+const saveCfg=()=>{try{const st={};SAVED.forEach(id=>{const el=$(id);st[id]=el.type==='checkbox'?el.checked:el.value});
+  st.prn=$('prn').value;localStorage.setItem('trilla_g300_cfg',JSON.stringify(st))}catch(e){}};
+SAVED.concat(['prn']).forEach(id=>$(id).addEventListener('change',saveCfg));
+const rebuild=async(redraw)=>{try{await ready;if(redraw)draw();buildJob(1)}catch(e){setStatus('❌ '+e.message,'bad')}};
+['giro','r180','umbral'].forEach(id=>$(id).addEventListener('change',()=>rebuild(false)));
+['bch','dpx'].forEach(id=>$(id).addEventListener('change',()=>rebuild(true)));
+
+// ---------- QZ Tray ----------
+let printers=[], savedPrn='';
+try{savedPrn=(JSON.parse(localStorage.getItem('trilla_g300_cfg')||'{}').prn)||''}catch(e){}
+async function conectar(){
+  if(typeof qz==='undefined')throw new Error('No se pudo cargar QZ Tray (revisa la conexión a internet)');
+  if(!qz.websocket.isActive()){
+    try{await qz.websocket.connect()}
+    catch(e){throw new Error('No se pudo conectar con QZ Tray. Confirma que esté abierto en este computador y acepta el permiso del navegador y de QZ. ('+(e&&e.message||e)+')')}
+  }
+}
+async function cargarImpresoras(){
+  const list=await qz.printers.find();
+  printers=Array.isArray(list)?list:[list];
+  const sel=$('prn'),cur=sel.value||savedPrn;
+  sel.innerHTML='<option value="">(automática: Godex)</option>'+printers.map(n=>`<option>${n}</option>`).join('');
+  if(cur&&printers.includes(cur))sel.value=cur;
+  return printers;
+}
+async function elegirImpresora(){
+  if(!printers.length)await cargarImpresoras();
+  const manual=$('prn').value; if(manual&&printers.includes(manual))return manual;
+  const g=printers.find(n=>/g300|godex/i.test(n));
+  if(!g)throw new Error('No encuentro la impresora Godex G300 en este computador. Ábrelo en ⚙️ Ajustes → Buscar y elige la impresora.');
+  return g;
+}
+async function enviar(bytes,prn){
+  await qz.print(qz.configs.create(prn),[{type:'raw',format:'command',flavor:'base64',data:b64(bytes)}]);
+}
+$('buscar').onclick=async()=>{
+  try{setStatus('Buscando impresoras…');await conectar();await cargarImpresoras();setStatus('Impresoras encontradas: '+printers.length,'ok')}
+  catch(e){setStatus('❌ '+(e.message||e),'bad')}
+};
+$('print').onclick=async()=>{
+  const btn=$('print');
+  try{
+    await ready;
+    const qty=Math.min(999,Math.max(1,parseInt($('qty').value)||1));$('qty').value=qty;
+    if(qty>100&&!confirm(`¿Imprimir ${qty} etiquetas?`))return;
+    btn.disabled=true;setStatus('Conectando con QZ Tray…');
+    await conectar();
+    const prn=await elegirImpresora();
+    setStatus('Enviando a '+prn+'…');
+    await enviar(buildJob(qty),prn);
+    setStatus(`✅ Enviado a ${prn}: ${qty} etiqueta${qty>1?'s':''}`,'ok');
+  }catch(e){setStatus('❌ '+(e&&e.message||e),'bad')}
+  finally{setTimeout(()=>{btn.disabled=false},1500)}
+};
+$('head').onclick=async()=>{
+  try{await conectar();const prn=await elegirImpresora();
+    await qz.print(qz.configs.create(prn),[{type:'raw',format:'command',flavor:'plain',data:'~T\r\n'}]);
+    setStatus('Patrón de prueba enviado: busca líneas blancas en lo que imprime','ok')}
+  catch(e){setStatus('❌ '+(e&&e.message||e),'bad')}
+};
+
+// ---------- Arranque: dibuja la vista previa ----------
+ready=(async()=>{
+  shapes=parse(new TextDecoder('utf-8').decode(Uint8Array.from(atob(EZPX_B64),c=>c.charCodeAt(0))));
+  await loadFonts();draw();buildJob(1);
+})();
+ready.catch(e=>setStatus('❌ No se pudo preparar la etiqueta: '+(e&&e.message||e),'bad'));
+window.__trillaPanelReady=ready;
+})();
+</script></body></html>
+"""
+
+def panel_impresion(ezpx_bytes, titulo, altura=340):
+    """Muestra el botón Imprimir (y la vista previa) para la etiqueta .ezpx ya generada."""
+    html = (PANEL_IMPRESION_HTML
+            .replace("__TITULO__", json.dumps(titulo, ensure_ascii=False).replace("<", "\\u003c"))
+            .replace("__EZPX_B64__", base64.b64encode(ezpx_bytes).decode()))
+    components.html(html, height=altura, scrolling=True)
+
 # ==================== APP ====================
 st.title("📋 Lista de Precios")
 
@@ -671,6 +977,11 @@ with tab2:
                         type="primary",
                         key=f"dl_{producto}",
                     )
+                    st.markdown("##### 🖨️ Imprimir directamente (Godex G300)")
+                    st.caption("Requiere QZ Tray abierto en el computador de la impresora. "
+                               "Si no imprime, usa «Descargar etiqueta» y ábrela en GoLabel.")
+                    panel_impresion(st.session_state.etiqueta_bytes,
+                                    f"Etiqueta: {producto} · Lote {data['lote']}")
     else:
         st.info("Aún no hay lotes recepcionados")
 
@@ -788,4 +1099,4 @@ with tab3:
                 if data_l:
                     editor_datos_lote(lote_dp, data_l["productos"], "adm")
 
-st.caption("Desarrollado para La Trilla con ❤️ • Datos en Google Sheets v1.4 (administración, datos por producto madre y etiquetas en lote)")
+st.caption("Desarrollado para La Trilla con ❤️ • Datos en Google Sheets v1.5 (impresión directa Godex G300)")
