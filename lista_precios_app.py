@@ -760,11 +760,20 @@ $('print').onclick=async()=>{
     const qty=Math.min(999,Math.max(1,parseInt($('qty').value)||1));$('qty').value=qty;
     if(qty>100&&!confirm(`¿Imprimir ${qty} etiquetas?`))return;
     btn.disabled=true;setStatus('Conectando con QZ Tray…');
-    await conectar();
-    const prn=await elegirImpresora();
+    const T=[performance.now()];
+    await conectar();T.push(performance.now());
+    let prn=null,cache='';try{cache=localStorage.getItem('trilla_g300_prn_auto')||''}catch(e){}
+    const man=$('prn').value;
+    if(man)prn=man;else if(cache)prn=cache;else prn=await elegirImpresora();
+    T.push(performance.now());
     setStatus('Enviando a '+prn+'…');
-    await enviar(buildJob(qty),prn);
-    setStatus(`✅ Enviado a ${prn}: ${qty} etiqueta${qty>1?'s':''}`,'ok');
+    const job=buildJob(qty);T.push(performance.now());
+    try{await enviar(job,prn)}
+    catch(e){ if(!man&&cache){try{localStorage.removeItem('trilla_g300_prn_auto')}catch(_){}prn=await elegirImpresora();await enviar(job,prn)} else throw e }
+    T.push(performance.now());
+    if(!man){try{localStorage.setItem('trilla_g300_prn_auto',prn)}catch(e){}}
+    const d=i=>((T[i]-T[i-1])/1000).toFixed(1);
+    setStatus(`✅ Enviado a ${prn}: ${qty} etiqueta${qty>1?'s':''} en ${((T[4]-T[0])/1000).toFixed(1)} s (conexión ${d(1)} · impresora ${d(2)} · imagen ${d(3)} · envío ${d(4)})`,'ok');
   }catch(e){setStatus('❌ '+(e&&e.message||e),'bad')}
   finally{setTimeout(()=>{btn.disabled=false},1500)}
 };
