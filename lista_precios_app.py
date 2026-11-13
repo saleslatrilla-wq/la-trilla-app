@@ -561,7 +561,7 @@ const tx=(e,n)=>{const c=ch(e,n);return c?c.textContent:''};
 const num=(v,d=0)=>{const n=parseFloat(v);return isNaN(n)?d:n};
 const b64=u=>{let s='';for(let i=0;i<u.length;i+=8192)s+=String.fromCharCode.apply(null,u.subarray(i,i+8192));return btoa(s)};
 const setStatus=(m,c)=>{const s=$('status');s.className=c||'';s.textContent=m};
-let shapes=[], stacks=new Map(), cal=new Map(), ready=null;
+let shapes=[], stacks=new Map(), cal=new Map(), ready=null, missing=new Set();
 $('titulo').textContent=TITULO;
 
 function parse(xml){
@@ -593,7 +593,7 @@ async function loadFonts(){
     stacks.set(n,`"lt${i}","${n}","Bahnschrift",Arial,sans-serif`);
     if(!ok)falta.push(n);
   });
-  calibrate();
+  missing=new Set(falta);calibrate();
   if(falta.length){$('fonts').className='small warn';$('fonts').textContent='⚠️ Fuentes no encontradas en este equipo: '+falta.join(', ')}
 }
 // Las variantes condensadas de Bahnschrift pueden no resolverse en el navegador y salir más anchas.
@@ -606,11 +606,14 @@ function calibrate(){
     const f=pf(s.font),L=s.rot?s.b.h:s.b.w;if(L<8)continue;
     c.font=fontCss(f);
     const w=Math.max(...s.data.split(/\r?\n/).map(l=>c.measureText(l).width))*s.fw;
-    if(w>0)(groups[f.name]=groups[f.name]||[]).push(L/w);
+    // Los textos con cifras cambian en cada etiqueta (precio, lote, fechas) y su medida guardada ya no vale:
+    // se prefieren los textos fijos («PRECIO POR KG») para medir el ancho real de la fuente.
+    if(w>0)(groups[f.name]=groups[f.name]||[]).push({r:L/w,fijo:!/\d/.test(s.data)});
   }
-  for(const [n,a] of Object.entries(groups)){
-    a.sort((x,y)=>x-y);const med=a[a.length>>1];
-    if(a.length>=3&&Math.abs(med-1)>0.06)cal.set(n,Math.min(1.25,Math.max(0.6,med)));
+  for(const [n,a0] of Object.entries(groups)){
+    const fijos=a0.filter(o=>o.fijo),a=(fijos.length?fijos:a0).map(o=>o.r).sort((x,y)=>x-y),med=a[a.length>>1];
+    // Si el navegador no encuentra la variante exacta (p. ej. Bahnschrift Light SemiCondensed) basta 1 texto para ajustar.
+    if((a.length>=3||missing.has(n))&&Math.abs(med-1)>0.06)cal.set(n,Math.min(1.25,Math.max(0.6,med)));
   }
 }
 
@@ -728,6 +731,15 @@ function textLayer(){
   for(let by=0;by<H;by++)for(let bx=0;bx<W;bx++){const q=(bx*400+(H-1-by))*4;
     if((0.3*src[q]+0.59*src[q+1]+0.11*src[q+2])<thr)L[by*W+bx]=1}
   return L;
+}
+// Los precios («$20.000») quedan alineados a la derecha, como el texto fijo de abajo («PRECIO POR KG»): el borde
+// derecho es el de la plantilla (X + ancho guardado). Así un precio más corto o más largo no se descuadra.
+function alinearPrecios(){
+  for(const s of shapes){
+    if(s.t!=='W'||s.rot||!s.b||!/^\$[\d.]+$/.test(s.data.trim())||!s.font)continue;
+    const w=medir(s)-2,dx=s.b.w-w;
+    if(Math.abs(dx)>3){s.x+=dx;s.b.w=w}
+  }
 }
 function medir(s){
   const f=pf(s.font),k=s.fw*(cal.get(f.name)||1),c=document.createElement('canvas').getContext('2d');c.font=fontCss(f);
@@ -866,7 +878,7 @@ ready=(async()=>{
   await loadFonts();
   if(HYB()){$('giro').value='ccw';$('r180').checked=false;$('giro').disabled=true;$('r180').disabled=true;
     const fo=$('fonts');if(!fo.textContent){fo.className='small';fo.textContent='⚡ Modo nativo: logo, Bebas Neue, código de barras y líneas se imprimen desde la impresora (giro fijo 90° antihorario).'}}
-  draw();buildJob(1);
+  alinearPrecios();draw();buildJob(1);
 })();
 ready.catch(e=>setStatus('❌ No se pudo preparar la etiqueta: '+(e&&e.message||e),'bad'));
 window.__trillaPanelReady=ready;
