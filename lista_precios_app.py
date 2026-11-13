@@ -510,7 +510,7 @@ details{margin-top:10px}summary{cursor:pointer;color:#555}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(130px,1fr));gap:6px 14px;margin:8px 0}
 .grid label{display:flex;justify-content:space-between;gap:8px;align-items:center}
 .prev{flex:0 0 auto}
-canvas#prev{width:340px;max-width:100%;border:1px solid #bbb;background:#fff;display:block}
+canvas#prev{height:310px;width:auto;max-width:100%;border:1px solid #bbb;background:#fff;display:block}
 #log{font:12px monospace;color:#6b7280;white-space:pre-wrap}
 </style></head><body>
 <div class="wrap">
@@ -572,7 +572,7 @@ function parse(xml){
     font:(g.getAttribute('FontCmd')||'').trim(),fw:num(g.getAttribute('FontWidth'),1000)/1000,
     data:tx(g,'Data'),w:num(tx(g,'Width')),h:num(tx(g,'Height')),hs:num(tx(g,'HStroke'),4),vs:num(tx(g,'VStroke'),4),
     bmp:tx(g,'BitmapCmd'),narrow:num(g.getAttribute('Narrow'),2),
-    fid:g.getAttribute('FontId')||'',ident:tx(g,'Identifier'),stored:tx(g,'LoadToDevice')==='true'&&!!tx(g,'Identifier'),
+    ang:num(tx(g,'Angle'),0),fid:g.getAttribute('FontId')||'',ident:tx(g,'Identifier'),stored:tx(g,'LoadToDevice')==='true'&&!!tx(g,'Identifier'),
     bch:num(g.getAttribute('Height')),bwd:num(g.getAttribute('Width'),6),sym:g.getAttribute('Symbology')||'',cap:g.getAttribute('CaptionAlignment')||'',
     fmx:num(g.getAttribute('FontWidth'),1),fmy:num(g.getAttribute('FontHeight'),1),gap:num(g.getAttribute('TextSpace'),0),
     b:br?{x:num(tx(br,'X')),y:num(tx(br,'Y')),w:num(tx(br,'Width')),h:num(tx(br,'Height'))}:null}});
@@ -636,7 +636,15 @@ function drawBmp(x,s){
   for(let j=0;j<ah;j++){const sr=h>0?ah-1-j:j;for(let i=0;i<w;i++){const p=off+sr*rb+i*by,q=(j*w+i)*4;
     im.data[q]=b[p+2];im.data[q+1]=b[p+1];im.data[q+2]=b[p];im.data[q+3]=255}}
   const t=document.createElement('canvas');t.width=w;t.height=ah;t.getContext('2d').putImageData(im,0,0);
-  x.drawImage(t,R(s.b?s.b.x:s.x),R(s.b?s.b.y:s.y));
+  const ox=R(s.b?s.b.x:s.x),oy=R(s.b?s.b.y:s.y),a=((R(s.ang||0)%360)+360)%360;
+  if(!a||!s.b){x.drawImage(t,ox,oy);return}
+  // GoLabel guarda la imagen ya girada y la rota (Angle, en sentido horario) para llevarla a su recuadro (BoundRect).
+  const bw=s.b.w,bh=s.b.h;x.save();
+  if(a===90){x.translate(ox+bw,oy);x.rotate(Math.PI/2);x.drawImage(t,0,0,bh,bw)}
+  else if(a===270){x.translate(ox,oy+bh);x.rotate(-Math.PI/2);x.drawImage(t,0,0,bh,bw)}
+  else if(a===180){x.translate(ox+bw,oy+bh);x.rotate(Math.PI);x.drawImage(t,0,0,bw,bh)}
+  else x.drawImage(t,ox,oy,bw,bh);
+  x.restore();
 }
 function drawText(x,s){
   const f=pf(s.font),lines=s.data.split(/\r?\n/);
@@ -677,6 +685,11 @@ function draw(){
     else if(s.t==='R'){const X=R(s.x),Y=R(s.y),Wd=R(s.w),Ht=R(s.h);
       x.fillRect(X,Y,Wd,s.vs);x.fillRect(X,Y+Ht-s.vs,Wd,s.vs);
       x.fillRect(X,Y,s.hs,Ht);x.fillRect(X+Wd-s.hs,Y,s.hs,Ht)}
+    else if(s.t==='Y'&&s.stored){ // el logo vive en la impresora: la vista previa solo marca su lugar
+      const bw=s.b?s.b.w:112,bh=s.b?s.b.h:390;x.fillStyle='#000';const X0=R(s.x),Y0=R(s.y),W0=R(bw),H0=R(bh);
+      for(let k=0;k<H0;k+=8){x.fillRect(X0,Y0+k,W0,1)}x.fillRect(X0,Y0,2,H0);x.fillRect(X0+W0-2,Y0,2,H0);x.fillRect(X0,Y0,W0,2);x.fillRect(X0,Y0+H0-2,W0,2);
+      x.fillStyle='#fff';x.fillRect(X0+W0/2-12,Y0+8,20,300);x.fillStyle='#000';x.save();x.font='16px Arial,sans-serif';x.translate(R(s.x+bw/2-5),R(s.y+16));x.rotate(Math.PI/2);
+      x.fillText('LOGO (guardado en la impresora)',0,0);x.restore();x.fillStyle='#000'}
     else if(s.t==='Y')drawBmp(x,s);
     else if(s.t==='A'){const f=pf(s.font);drawText(x,{...s,font:f.name+','+(f.pt/2),b:null,fw:1})}
     else if(s.t==='W')drawText(x,s);
@@ -693,15 +706,15 @@ function toBmp(){
   o[0]=66;o[1]=77;dv.setUint32(2,size,true);dv.setUint32(10,62,true);dv.setUint32(14,40,true);
   dv.setInt32(18,W,true);dv.setInt32(22,H,true);dv.setUint16(26,1,true);dv.setUint16(28,1,true);
   dv.setUint32(34,rb*H,true);dv.setUint32(46,2,true);dv.setUint32(50,2,true);o.set([0,0,0,0,255,255,255,0],54);
-  const pv=new ImageData(W,H);
+  const pv=new ImageData(400,800);
   for(let by=0;by<H;by++)for(let bx=0;bx<W;bx++){
     let px=bx,py=by;if(r180){px=W-1-px;py=H-1-py}
     const xd=cw?py:H-1-py,yd=cw?W-1-px:px,q=(yd*400+xd)*4;
     const white=(0.3*src[q]+0.59*src[q+1]+0.11*src[q+2])>=thr,p=(by*W+bx)*4;
     if(white)o[62+(H-1-by)*rb+(bx>>3)]|=0x80>>(bx&7);
-    pv.data[p]=pv.data[p+1]=pv.data[p+2]=white?255:0;pv.data[p+3]=255;
   }
-  const c=$('prev');c.width=W;c.height=H;c.getContext('2d').putImageData(pv,0,0);
+  for(let q=0;q<400*800*4;q+=4){const w=(0.3*src[q]+0.59*src[q+1]+0.11*src[q+2])>=thr;pv.data[q]=pv.data[q+1]=pv.data[q+2]=w?255:0;pv.data[q+3]=255}
+  const c=$('prev');c.width=400;c.height=800;c.getContext('2d').putImageData(pv,0,0);
   return o;
 }
 // ---------- Modo nativo (como GoLabel): logo, Bebas Neue, código de barras, líneas y cuadros salen de la impresora;
@@ -743,7 +756,7 @@ function buildHybrid(qty){
       T(`V${s.fid},${R(s.y)},${R(PH-s.x)},${s.fmx},${s.fmy},${s.gap},3E,${s.data.replace(/\r?\n/g,' ')}${nl}`);
     }
     else if(s.t==='Y'&&s.stored)T(`Y${R(s.y)},${R(PH-s.x-(s.b?s.b.w:0))},${s.ident}${nl}`);
-    else if(s.t==='Y'&&s.b){q(R(s.y),R(PH-s.x-Math.ceil(s.b.w)),Math.ceil(s.b.h/8),Math.ceil(s.b.w))}
+    else if(s.t==='Y'&&s.b){q(R(s.y),R(PH-s.x-R(s.b.w)),Math.ceil(s.b.h/8),R(s.b.w))}
     else if(s.t==='W'){
       if(!s.b)throw new Error('Texto sin medidas en la etiqueta');
       const m=medir(s),bw=s.rot?s.b.w:Math.max(s.b.w,m),bh=s.rot?Math.max(s.b.h,m):s.b.h;
