@@ -6,3 +6,4 @@ openpyxl
 xmltodict
 google-api-python-client
 starlette>=0.46.0,<0.50
+python-calamine

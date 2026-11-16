@@ -82,7 +82,8 @@ modulo = st.sidebar.selectbox(
         "📋 1. Lista de Precios",
         "🏭 2. Producción / Envasado",
         "📊 3. Calculadora de Precios",
-        "📦 4. Pedidos"
+        "📦 4. Pedidos",
+        "🛒 5. Compras"
     ]
 )
 
@@ -125,4 +126,8 @@ elif modulo == "📊 3. Calculadora de Precios":
 
 elif modulo == "📦 4. Pedidos":
     with open("Pedidos_app.py", "r", encoding="utf-8") as f:
+        exec(f.read())
+
+elif modulo == "🛒 5. Compras":
+    with open("Compras_app.py", "r", encoding="utf-8") as f:
         exec(f.read())
