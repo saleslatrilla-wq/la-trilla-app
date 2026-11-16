@@ -1096,6 +1096,7 @@ def _plan_panel():
     _antes_map = _nn["Comprar antes kg"].to_dict() if "Comprar antes kg" in _nn else {}
     _sg_set = set(_nn.index[_nn["Siempre"]]) if "Siempre" in _nn else set()
     _pp_map = _nn["Por procesados kg"].to_dict() if "Por procesados kg" in _nn else {}
+    _tp_set = set(_nn.index[_nn["Temporada"]]) if "Temporada" in _nn else set()
     tipos = sorted(plan_all["Tipo"].unique())
     with st.expander("Filtrar por tipo de producto"):
         _def = None if "plan_tipos" in ss else ([t for t in tipos if t.startswith("MP.") or t.startswith("ReV.")] or tipos)
@@ -1131,7 +1132,7 @@ def _plan_panel():
     # ---------------- Lista (izquierda) ----------------
     with izq:
         vista = plan[["Producto", "Comprar kg", "Proveedor", "Formato", "Bultos", "Total Neto"]].copy()
-        vista["Producto"] = [("📌 " if c_ in _sg_set else "") + ("🧪 " if _pp_map.get(c_, 0) > 0 else "") + p_
+        vista["Producto"] = [("🍂 " if c_ in _tp_set else "") + ("📌 " if c_ in _sg_set else "") + ("🧪 " if _pp_map.get(c_, 0) > 0 else "") + p_
                              for p_, c_ in zip(plan["Producto"], plan["Clave"])]
         vista.insert(0, "✓", ["✔" if c in ss.cmp_rev else "" for c in plan["Clave"]])
         vista.insert(1, "Incl.", ["✖" if c in ss.cmp_excl else "●" for c in plan["Clave"]])
@@ -1174,6 +1175,11 @@ def _plan_panel():
         m1.metric("Stock Actual kg/uni.", _num(r["Stock kg"], 1))
         m2.metric("Venta semanal kg/uni.", _num(r["Venta semanal kg"], 1))
         m3.metric("Comprar", _num(r["Comprar kg"], 1))
+        if cur in _tp_set:
+            _t1 = _nn.loc[cur]
+            st.info(f"🍂 Compra de temporada: se calcula para repetir lo vendido el año anterior (+{float(ss.get('cmp_temp', {}).get(cur, 0)):.0f} %) "
+                    f"hasta el {ss.get('_k_temp_fin'):%d/%m/%Y}. Con la compra normal se pedirían {_num(_t1['Comprar normal kg'], 1)} kg/uni.; "
+                    f"con temporada, {_num(_t1['Comprar kg'], 1)}.")
         if _pp_map.get(cur, 0) > 0:
             st.info(f"🧪 Incluye {_num(_pp_map[cur], 1)} kg/uni. de demanda por productos procesados que usan este ingrediente (⚙️ Configuración → Procesados).")
         if cur in _sg_set:
@@ -1506,7 +1512,7 @@ if _nav == _SECC[3]:
         k1.metric("Proveedores", len(base))
         k2.metric("Sin factura", int((base["Factura"] == "No").sum()))
         k3.metric("Sin condición de pago", sin_cond)
-        k4.metric("Retiro en bodega", int(base["Entrega"].map(lambda e: cc.norm(e).startswith("retiro")).sum()))
+        k4.metric("Retiro en bodega", sum(1 for e_ in base["Entrega"] if cc.norm(e_).startswith("retiro")))
         k5.metric("Sin entrega definida", int((base["Entrega"].str.strip() == "").sum()))
 
         vista = base.copy()
