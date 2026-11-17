@@ -8,7 +8,7 @@ import pandas as pd
 import streamlit as st
 
 import compras_core as cc
-if "Pedir hasta" not in cc.COLS_PROVEEDORES or "Mín. kg compra" not in cc.COLS_PROVEEDORES or "Máx. viajes" not in cc.COLS_PROVEEDORES or "max_viajes" not in cc.distribuir_viajes.__code__.co_varnames:
+if "Frecuencia" not in cc.COLS_PROVEEDORES or "Mín. kg compra" not in cc.COLS_PROVEEDORES or "Máx. viajes" not in cc.COLS_PROVEEDORES or "max_viajes" not in cc.distribuir_viajes.__code__.co_varnames:
     st.error("Falta actualizar el archivo **compras_core.py** en GitHub: Compras_app.py y compras_core.py siempre deben subirse juntos. "
              "Sube la última versión de compras_core.py y reinicia la app (Manage app → Reboot).")
     st.stop()
@@ -465,7 +465,9 @@ def _prov_map():
                      "cond": _cond_label(r.get("Condición de pago", ""), r.get("Días cheque", "")),
                      "entrega": ent, "retiro": cc.norm(ent).startswith("retiro"),
                      "min_kg": float(pd.to_numeric(r.get("Mín. kg compra", ""), errors="coerce") or 0.0),
-                     "desp": cc.parse_dias(r.get("Días despacho", "")), "lim": cc.parse_dias(r.get("Pedir hasta", ""))}
+                     "desp": cc.parse_dias(r.get("Días despacho", "")), "lim": cc.parse_dias(r.get("Pedir hasta", "")),
+                     "fechas": cc.norm(r.get("Frecuencia", "")).startswith("fecha"),
+                     "desp_txt": str(r.get("Días despacho", "") or ""), "lim_txt": str(r.get("Pedir hasta", "") or "")}
     return mp
 
 
@@ -1550,10 +1552,11 @@ if _nav == _SECC[3]:
         nuevos = [p for p in nuevos if cc.norm(p) not in ya]
         if nuevos:    # proveedores de la base de precios que aún no tienen condiciones
             base = pd.concat([base, pd.DataFrame({"Proveedor": nuevos, "Factura": "Sí", "Condición de pago": "",
-                                                  "Días cheque": "", "Entrega": "", "Máx. viajes": "", "Mín. kg compra": "", "Días despacho": "", "Pedir hasta": "", "Nota": ""})], ignore_index=True)
+                                                  "Días cheque": "", "Entrega": "", "Máx. viajes": "", "Mín. kg compra": "", "Frecuencia": "Semanal", "Días despacho": "", "Pedir hasta": "", "Nota": ""})], ignore_index=True)
         base["_k"] = base["Proveedor"].map(cc.norm)
         base = base.sort_values("_k").drop(columns="_k").reset_index(drop=True)
         base["Factura"] = base["Factura"].replace("", "Sí").fillna("Sí")
+        base["Frecuencia"] = base["Frecuencia"].replace("", "Semanal").fillna("Semanal")
         base["Días cheque"] = pd.to_numeric(base["Días cheque"].replace("", None), errors="coerce")
         base["Entrega"] = base["Entrega"].fillna("").astype(str)
         base["Máx. viajes"] = pd.to_numeric(base["Máx. viajes"].replace("", np.nan), errors="coerce")
@@ -1571,7 +1574,7 @@ if _nav == _SECC[3]:
         vista["Entrega"] = [e_ or "—" for e_ in base["Entrega"]]
         vista["Máx. viajes"] = [f"{int(m_)}" if pd.notna(m_) else "sin límite" for m_ in base["Máx. viajes"]]
         vista["Mín. kg compra"] = [f"{_num(m_, 0)} kg" if pd.notna(m_) and m_ > 0 else "—" for m_ in base["Mín. kg compra"]]
-        vista = vista[["Proveedor", "Factura", "Condición de pago", "Entrega", "Máx. viajes", "Mín. kg compra", "Días despacho", "Pedir hasta", "Nota"]]
+        vista = vista[["Proveedor", "Factura", "Condición de pago", "Entrega", "Máx. viajes", "Mín. kg compra", "Frecuencia", "Días despacho", "Pedir hasta", "Nota"]]
 
         def _est_cond(df):
             e = pd.DataFrame("", index=df.index, columns=df.columns)
@@ -1597,9 +1600,11 @@ if _nav == _SECC[3]:
                         "Mín. kg compra": st.column_config.NumberColumn("Mín. kg por compra", min_value=0, step=10, format="%d",
                                                                         help="Kilos mínimos que exige el proveedor en cada compra (ej. Alitrade 500). Vacío = sin mínimo. "
                                                                              "Si el plan lo deja bajo ese mínimo, la app avisa cuánto falta."),
-                        "Días despacho": st.column_config.TextColumn("Días de despacho", help="Sólo proveedores que despachan en tienda. Ej: Vie  ·  o varios: Mar, Vie"),
-                        "Pedir hasta": st.column_config.TextColumn("Pedir hasta (día)", help="Último día para enviarle el pedido para que llegue en el despacho. "
-                                                                   "Ej: Mar (si despacha el Vie). Con varios despachos, en el mismo orden: Lun, Mar"),
+                        "Frecuencia": st.column_config.SelectboxColumn("Frecuencia", options=cc.FRECUENCIAS, width="small",
+                                                                       help="Semanal: se repite cada semana. Fechas específicas: tú anotas las fechas (ej. proveedor que despacha una vez al mes)."),
+                        "Días despacho": st.column_config.TextColumn("Días / fechas de despacho", help="Semanal: Vie  ·  o varios: Mar, Vie.  Fechas específicas: 27/11, 18/12"),
+                        "Pedir hasta": st.column_config.TextColumn("Pedir hasta", help="Semanal: día (Mar). Fechas específicas: fechas límite en el mismo orden (20/11, 11/12), "
+                                                                   "o '5 días antes'. Vacío = el día anterior al despacho."),
                         "Nota": st.column_config.TextColumn("Nota", width="large")})
                 guardar_p = st.form_submit_button("💾 Guardar condiciones", type="primary")
             if guardar_p:
@@ -1735,6 +1740,25 @@ def _cb_n_viajes():
             base_ = prev or ss.get("cmp_vjg_cfg", {}).get("fechas", [date.today()])[-1]
             ss[f"vjd_{i}"] = base_ + timedelta(days=P["paso"])
         prev = ss[f"vjd_{i}"]
+
+
+def _pedidos_despacho(grp, inf):
+    """Para un proveedor que despacha en tienda: reparte la compra en sus despachos (sólo lo necesario hasta el siguiente).
+    Devuelve {'cal': [(límite, despacho)], 'lins': líneas, 'asig': DataFrame V1..Vn} o None."""
+    if inf.get("retiro") or not (inf.get("desp") or inf.get("fechas")):
+        return None
+    ini_ = ss.get("_k_ini", date.today() + timedelta(days=1))
+    fin_ = ss.get("_k_fin", ini_ + timedelta(days=14))
+    if inf.get("fechas"):
+        cal = cc.calendario_fechas(date.today(), inf.get("desp_txt", ""), inf.get("lim_txt", ""), fin_)
+    else:
+        cal = cc.calendario_despacho(date.today(), inf["desp"], inf.get("lim", []), fin_)
+    if not cal:
+        return None
+    lins = _lineas_viaje(grp)
+    P = _params_viaje()
+    asig = cc.distribuir_viajes(lins, [d for _, d in cal], ini_, _peso_fn(), P["buf"], float(ss.get("_k_col", 10.0)), 1e12, False, None)
+    return {"cal": cal, "lins": lins, "asig": asig}
 
 
 def _lineas_de_viaje(lineas, asig, j, prov=None):
@@ -1906,6 +1930,17 @@ if _nav == _SECC[4]:
                 for l in _lineas_de_viaje(lins_ret, vj["asig"], j):
                     viajes_de.setdefault(l["Proveedor"], set()).add(j)
 
+        desp_de = {}
+        for p_, g_ in ok.groupby("Proveedor"):
+            r_ = _pedidos_despacho(g_, _info(p_))
+            if r_:
+                desp_de[p_] = r_
+
+        for p_ in sorted(ok["Proveedor"].unique()):
+            i_ = _info(p_)
+            if i_.get("fechas") and p_ not in desp_de:
+                st.error(f"⚠️ {p_}: no tiene una fecha de despacho vigente. Anota su próxima fecha en ⚙️ Configuración → Condiciones de Proveedor.")
+
         res = ok.groupby("Proveedor").agg(Neto=("Total Neto", "sum")).reset_index()
         res["Factura"] = res["Proveedor"].map(lambda p: "Sí" if _info(p)["factura"] else "No")
         res["Condición de pago"] = res["Proveedor"].map(lambda p: _info(p)["cond"] or "—")
@@ -1919,11 +1954,18 @@ if _nav == _SECC[4]:
                 neto_j = sum(l["NetoV"] for l in _lineas_de_viaje(lins_ret, vj["asig"], j, p))
                 return round(neto_j * (1.19 if _info(p)["factura"] else 1.0))
             res[f"Viaje {j} Total"] = res["Proveedor"].map(_tot_viaje)
+        def _tot_ahora(p):
+            d_ = desp_de.get(p)
+            if not d_:
+                return float("nan")
+            pri = _lineas_de_viaje(d_["lins"], d_["asig"], 1, p)
+            return round(sum(l["NetoV"] for l in pri) * (1.19 if _info(p)["factura"] else 1.0))
+        res["Pedir ahora"] = res["Proveedor"].map(_tot_ahora)
         res["IVA"] = (res["Neto"].where(res["Factura"] == "Sí", 0.0) * 0.19).round(0)      # sin factura: no se suma IVA
         res["Total"] = res["Neto"] + res["IVA"]
         res = res.sort_values("Total", ascending=False).reset_index(drop=True)
         res = res[["Proveedor", "Factura", "Condición de pago", "Entrega", "Peso kg"] + [f"Viaje {j} Total" for j in range(1, n_vj + 1)]
-                  + ["Neto", "IVA", "Total"]]
+                  + (["Pedir ahora"] if res["Pedir ahora"].notna().any() else []) + ["Neto", "IVA", "Total"]]
         _cols_vj = [f"Viaje {j} Total" for j in range(1, n_vj + 1)]
 
         def _nf(x, signo=""):
@@ -1940,7 +1982,7 @@ if _nav == _SECC[4]:
             return e
         _vista_res = res.drop(columns=["Neto", "IVA"])
         st.dataframe(_vista_res.style.apply(_est_res, axis=None).format(
-                        {**{c: (lambda v: _nf(v, "$")) for c in _cols_vj + ["Total"]}, "Peso kg": lambda v: _num(v, 0)}, na_rep="—"),
+                        {**{c: (lambda v: _nf(v, "$")) for c in _cols_vj + ["Total", "Pedir ahora"] if c in _vista_res.columns}, "Peso kg": lambda v: _num(v, 0)}, na_rep="—"),
                      hide_index=True, use_container_width=True)
         t1, t2, t3 = st.columns(3)
         t1.metric("Neto total", "$" + _nf(res["Neto"].sum()))
@@ -1967,19 +2009,20 @@ if _nav == _SECC[4]:
 
         _cal = []
         _hoy = date.today()
-        for p_ in sorted(ok["Proveedor"].unique()):
-            i_ = _info(p_)
-            if i_["retiro"] or not i_.get("desp"):
+        for p_, d_ in sorted(desp_de.items()):
+            fl_ = None
+            for j_, (C_, D_) in enumerate(d_["cal"], start=1):
+                if _lineas_de_viaje(d_["lins"], d_["asig"], j_, p_):
+                    fl_ = (C_, D_)
+                    break
+            if fl_ is None:
                 continue
-            r_ = cc.proximo_despacho(_hoy, i_["desp"], i_.get("lim", []))
-            if r_ is None:
-                continue
-            C_, D_ = r_
+            C_, D_ = fl_
             fal = (C_ - _hoy).days
             _cal.append({"Proveedor": p_, "Pedir antes de": f"{cc.DIAS_ES[C_.weekday()]} {C_:%d/%m}", "Llega / despacha": f"{cc.DIAS_ES[D_.weekday()]} {D_:%d/%m}",
                          "Días": fal, "Estado": "🔴 ¡Hoy es el último día!" if fal == 0 else ("🟡 Pedir pronto" if fal <= 2 else "🟢 A tiempo")})
         if _cal:
-            st.markdown("#### 📅 Fechas límite de pedido (proveedores que despachan en tienda)")
+            st.markdown("#### 📅 Próximo pedido por proveedor (despachan en tienda)")
             _cal.sort(key=lambda x: x["Días"])
             st.dataframe(pd.DataFrame(_cal).drop(columns="Días"), hide_index=True, use_container_width=True)
             for c_ in _cal:
@@ -1987,6 +2030,7 @@ if _nav == _SECC[4]:
                     st.error(f"🔴 {c_['Proveedor']}: hoy es el último día para pedir (despacha {c_['Llega / despacha']}).")
                 elif c_["Días"] <= 2:
                     st.warning(f"🟡 {c_['Proveedor']}: pedir antes de {c_['Pedir antes de']} para que llegue el {c_['Llega / despacha']}.")
+            st.caption("Cada pedido incluye sólo lo necesario para llegar al despacho siguiente; el resto del plan se pide en los despachos posteriores.")
 
         st.markdown("### Órdenes por proveedor")
         prov_sel = st.selectbox("Ver / copiar orden de", ["(todos)"] + res["Proveedor"].tolist())
@@ -2008,6 +2052,23 @@ if _nav == _SECC[4]:
                                      hide_index=True, use_container_width=True)
                         f_ = vj["fechas"][j - 1]
                         msg = (f"Hola, quisiera pedir para retirar el {cc.DIAS_ES[f_.weekday()]} {f_:%d/%m}:\n"
+                               + "\n".join(_linea_msg(l, l["BultosV"]) for l in sorted(fl, key=lambda x: cc.norm(x["Producto"]))) + "\n¿Tienen stock? Gracias.")
+                        st.code(msg, language=None)
+                elif prov in desp_de:
+                    d_ = desp_de[prov]
+                    for j, (C_, D_) in enumerate(d_["cal"], start=1):
+                        fl = _lineas_de_viaje(d_["lins"], d_["asig"], j, prov)
+                        if not fl:
+                            continue
+                        neto_ = sum(l["NetoV"] for l in fl)
+                        st.markdown(f"**Pedido {j} · pedir antes de {cc.DIAS_ES[C_.weekday()]} {C_:%d/%m} · llega {cc.DIAS_ES[D_.weekday()]} {D_:%d/%m}** "
+                                    f"· {clp(neto_)} neto")
+                        det = pd.DataFrame([{"Producto": l["Producto"], "Formato": l["Formato"], "Bultos": l["BultosV"], "Kg total": l["KgV"],
+                                             "Precio Neto Kg": l["Precio"], "Total Neto": l["NetoV"]} for l in fl])
+                        st.dataframe(det.style.format({"Kg total": _nf, "Precio Neto Kg": lambda v: _nf(v, "$"),
+                                                       "Total Neto": lambda v: _nf(v, "$")}),
+                                     hide_index=True, use_container_width=True)
+                        msg = (f"Hola, quisiera pedir para el despacho del {cc.DIAS_ES[D_.weekday()]} {D_:%d/%m}:\n"
                                + "\n".join(_linea_msg(l, l["BultosV"]) for l in sorted(fl, key=lambda x: cc.norm(x["Producto"]))) + "\n¿Tienen stock? Gracias.")
                         st.code(msg, language=None)
                 else:

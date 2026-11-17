@@ -32,9 +32,10 @@ COLS_PRECIOS = ["Producto", "Formato", "Precio Neto Kg", "Proveedor", "Disponibl
 COLS_FORMATOS = ["Formato", "Kg por bulto"]
 COLS_SESION = ["ID", "Fecha", "Detalle", "Parte", "Partes", "Datos"]
 COLS_CALENDARIO = ["Fecha", "Peso", "Nota"]
+FRECUENCIAS = ["Semanal", "Fechas específicas"]
 ENTREGAS = ["Despacha en tienda", "Retiro en bodega proveedor"]
 CAP_VIAJE_DEF, MAX_VIAJE_DEF = 1500.0, 1750.0
-COLS_PROVEEDORES = ["Proveedor", "Factura", "Condición de pago", "Días cheque", "Entrega", "Máx. viajes", "Mín. kg compra", "Días despacho", "Pedir hasta", "Nota"]
+COLS_PROVEEDORES = ["Proveedor", "Factura", "Condición de pago", "Días cheque", "Entrega", "Máx. viajes", "Mín. kg compra", "Frecuencia", "Días despacho", "Pedir hasta", "Nota"]
 COLS_ORDENES = ["Fecha", "N° Orden", "Proveedor", "Producto", "Formato", "Bultos", "Kg",
                 "Precio Neto Kg", "Total Neto", "Estado", "Viaje", "Fecha Viaje"]
 
@@ -664,6 +665,51 @@ def proximo_despacho(hoy: date, desp: list, lim: list):
                     mejor = (C, D)
                 break
     return mejor
+
+
+def parse_fechas(txt, ref: date) -> list:
+    """'27/11, 18/12' -> [date,...] (sin año: el próximo que corresponda)."""
+    out = []
+    for d_, m_, a_ in re.findall(r"(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{2,4}))?", str(txt or "")):
+        try:
+            y = int(a_) + (2000 if a_ and int(a_) < 100 else 0) if a_ else ref.year
+            f = date(y, int(m_), int(d_))
+            if not a_ and f < ref - timedelta(days=30):
+                f = date(y + 1, int(m_), int(d_))
+            out.append(f)
+        except ValueError:
+            pass
+    return sorted(set(out))
+
+
+def calendario_fechas(hoy: date, desp_txt, lim_txt, hasta: date) -> list:
+    """Despachos en fechas específicas: [(limite_pedido, despacho)] con límite >= hoy (el primero siempre; el resto hasta `hasta`).
+    `lim_txt`: fechas (misma cantidad), o 'N días antes', o vacío = el día anterior."""
+    ds = parse_fechas(desp_txt, hoy)
+    ls = parse_fechas(lim_txt, hoy)
+    m = re.search(r"\d+", str(lim_txt or ""))
+    n_antes = int(m.group()) if (m and not ls) else 1
+    out = []
+    for k, D in enumerate(ds):
+        C = ls[k] if len(ls) == len(ds) else D - timedelta(days=n_antes)
+        if C < hoy:
+            continue
+        if out and D > hasta:
+            break
+        out.append((C, D))
+    return out
+
+
+def calendario_despacho(hoy: date, desp: list, lim: list, hasta: date) -> list:
+    """Todos los (limite_pedido, despacho) desde `hoy` hasta `hasta` (siempre al menos el primero)."""
+    out, h = [], hoy
+    for _ in range(60):
+        r = proximo_despacho(h, desp, lim)
+        if r is None or (out and r[1] > hasta):
+            break
+        out.append(r)
+        h = r[0] + timedelta(days=1)
+    return out
 
 
 def fecha_quiebre(stock: float, diaria: float, ini: date, pre: list):
