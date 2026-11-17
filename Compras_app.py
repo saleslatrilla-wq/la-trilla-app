@@ -1491,7 +1491,8 @@ if _nav == _SECC[3]:
         st.markdown("#### Condiciones de Proveedor")
         st.caption("Indica si el proveedor **factura** (si no factura, en la orden de compra no se suma IVA), su **condición de pago** y cómo "
                    "**entrega**. Los productos de proveedores con *Retiro en bodega proveedor* se reparten juntos en los viajes del camión "
-                   "(la capacidad se define en la Orden de compra), priorizando los que se agotan antes.")
+                   "(la capacidad se define en 📄 Pedidos → Logística), priorizando los que se agotan antes. **Máx. viajes** limita en cuántos viajes se puede "
+                   "repartir la compra de cada proveedor (1 = todo en un solo viaje; vacío = sin límite).")
         base = ss.cmp_provs.copy()
         for c_ in cc.COLS_PROVEEDORES:
             if c_ not in base.columns:
@@ -1501,12 +1502,13 @@ if _nav == _SECC[3]:
         nuevos = [p for p in nuevos if cc.norm(p) not in ya]
         if nuevos:    # proveedores de la base de precios que aún no tienen condiciones
             base = pd.concat([base, pd.DataFrame({"Proveedor": nuevos, "Factura": "Sí", "Condición de pago": "",
-                                                  "Días cheque": "", "Entrega": "", "Nota": ""})], ignore_index=True)
+                                                  "Días cheque": "", "Entrega": "", "Máx. viajes": "", "Nota": ""})], ignore_index=True)
         base["_k"] = base["Proveedor"].map(cc.norm)
         base = base.sort_values("_k").drop(columns="_k").reset_index(drop=True)
         base["Factura"] = base["Factura"].replace("", "Sí").fillna("Sí")
         base["Días cheque"] = pd.to_numeric(base["Días cheque"].replace("", None), errors="coerce")
         base["Entrega"] = base["Entrega"].fillna("").astype(str)
+        base["Máx. viajes"] = pd.to_numeric(base["Máx. viajes"].replace("", np.nan), errors="coerce")
         sin_cond = int((base["Condición de pago"].astype(str).str.strip() == "").sum())
         k1, k2, k3, k4, k5 = st.columns(5)
         k1.metric("Proveedores", len(base))
@@ -1518,7 +1520,8 @@ if _nav == _SECC[3]:
         vista = base.copy()
         vista["Condición de pago"] = [_cond_label(c_, d_) or "—" for c_, d_ in zip(base["Condición de pago"], base["Días cheque"])]
         vista["Entrega"] = [e_ or "—" for e_ in base["Entrega"]]
-        vista = vista[["Proveedor", "Factura", "Condición de pago", "Entrega", "Nota"]]
+        vista["Máx. viajes"] = [f"{int(m_)}" if pd.notna(m_) else "sin límite" for m_ in base["Máx. viajes"]]
+        vista = vista[["Proveedor", "Factura", "Condición de pago", "Entrega", "Máx. viajes", "Nota"]]
 
         def _est_cond(df):
             e = pd.DataFrame("", index=df.index, columns=df.columns)
@@ -1538,6 +1541,9 @@ if _nav == _SECC[3]:
                         "Días cheque": st.column_config.NumberColumn("Días cheque (si es N#)", min_value=1, step=1, format="%d",
                                                                      help="Sólo si la condición es 'Cheque N# días'"),
                         "Entrega": st.column_config.SelectboxColumn("Entrega", options=cc.ENTREGAS),
+                        "Máx. viajes": st.column_config.NumberColumn("Máx. viajes", min_value=1, max_value=8, step=1, format="%d",
+                                                                     help="En cuántos viajes del camión como máximo se puede repartir la compra de este proveedor "
+                                                                          "(sólo si retiras en su bodega). 1 = todo junto en un solo viaje. Vacío = sin límite."),
                         "Nota": st.column_config.TextColumn("Nota", width="large")})
                 guardar_p = st.form_submit_button("💾 Guardar condiciones", type="primary")
             if guardar_p:
@@ -1579,6 +1585,15 @@ def _lineas_viaje(grp):
     return out
 
 
+def _max_viajes_map():
+    """{proveedor: máx. de viajes} según ⚙️ Configuración → Condiciones de Proveedor (vacío = sin límite)."""
+    d = ss.get("cmp_provs")
+    if d is None or d.empty or "Máx. viajes" not in d.columns:
+        return {}
+    v = pd.to_numeric(d["Máx. viajes"].replace("", np.nan), errors="coerce")
+    return {str(p).strip(): int(m) for p, m in zip(d["Proveedor"], v) if pd.notna(m) and m >= 1}
+
+
 ss.setdefault("cmp_vjg_cfg", None)     # {n, f1, paso}
 ss.setdefault("cmp_vjg_asig", None)    # {sig, df}
 
@@ -1601,7 +1616,7 @@ def _viajes_global(lineas):
         f1_def += timedelta(days=1)
     cfg = ss.cmp_vjg_cfg
     if cfg is None:
-        sg = cc.sugerir_viajes(lineas, f1_def, P["paso"], ini_, pf, P["buf"], col_, P["cap"], P["llenar"])
+        sg = cc.sugerir_viajes(lineas, f1_def, P["paso"], ini_, pf, P["buf"], col_, P["cap"], P["llenar"], max_viajes=_max_viajes_map())
         n0, p0 = (sg if sg else (1, P["paso"]))
         cfg = {"n": n0, "fechas": [f1_def + timedelta(days=p0 * i) for i in range(n0)]}
         ss.cmp_vjg_cfg = cfg
@@ -1616,10 +1631,10 @@ def _viajes_global(lineas):
             raw.append((raw[-1] if raw else f1_def) + timedelta(days=P["paso"]))
     fechas = sorted(raw)
     sig = (tuple((l["Clave"], l["Proveedor"], l["Bultos"], l["Formato"], round(l["Peso bulto"], 4)) for l in lineas),
-           tuple(fechas), P["buf"], P["llenar"], ini_, col_, P["cap"])
+           tuple(fechas), P["buf"], P["llenar"], ini_, col_, P["cap"], tuple(sorted(_max_viajes_map().items())))
     st_ = ss.cmp_vjg_asig
     if st_ is None or st_["sig"] != sig:
-        st_ = {"sig": sig, "df": cc.distribuir_viajes(lineas, fechas, ini_, pf, P["buf"], col_, P["cap"], P["llenar"])}
+        st_ = {"sig": sig, "df": cc.distribuir_viajes(lineas, fechas, ini_, pf, P["buf"], col_, P["cap"], P["llenar"], _max_viajes_map())}
         ss.cmp_vjg_asig = st_
     pb = {l["Clave"]: l["Peso bulto"] for l in lineas}
     return {"n": n, "fechas": fechas, "fechas_raw": raw, "asig": st_["df"], "sig": sig, "pb": pb,
@@ -1642,7 +1657,7 @@ def _cb_sugerir(lineas):
     f1 = ini_
     while pf(f1) <= 0:
         f1 += timedelta(days=1)
-    sg = cc.sugerir_viajes(lineas, f1, P["paso"], ini_, pf, P["buf"], float(ss.get("_k_col", 10.0)), P["cap"], P["llenar"])
+    sg = cc.sugerir_viajes(lineas, f1, P["paso"], ini_, pf, P["buf"], float(ss.get("_k_col", 10.0)), P["cap"], P["llenar"], max_viajes=_max_viajes_map())
     n0, p0 = (sg if sg else (8, 1))
     fechas = [f1 + timedelta(days=p0 * i) for i in range(n0)]
     ss.cmp_vjg_cfg = {"n": n0, "fechas": fechas}
@@ -1724,6 +1739,21 @@ def _render_viajes(lineas, vj):
                      "Agrega un viaje, adelanta la fecha o sube la capacidad.")
         elif w > cap + 1e-6:
             st.warning(f"Viaje {j + 1}: {_num(w)} kg, sobre la capacidad normal ({_num(cap)} kg) pero dentro del máximo ({_num(mx)} kg).")
+    _mvm = _max_viajes_map()
+    if _mvm:
+        _usados = {}
+        for l_ in lineas:
+            if l_["Proveedor"] in _mvm:
+                fila_ = asig[asig["Clave"] == l_["Clave"]]
+                if len(fila_):
+                    _usados.setdefault(l_["Proveedor"], set()).update(j + 1 for j in range(vj["n"]) if int(fila_.iloc[0][f"V{j + 1}"]) > 0)
+        _lim = [f"{p_} (máx. {m_})" for p_, m_ in _mvm.items() if p_ in _usados]
+        if _lim:
+            st.caption("Proveedores con límite de viajes: " + " · ".join(_lim) + ". Se editan en ⚙️ Configuración → Condiciones de Proveedor.")
+        for p_, m_ in _mvm.items():
+            if p_ in _usados and len(_usados[p_]) > m_:
+                st.warning(f"{p_}: se reparte en {len(_usados[p_])} viajes (viajes {', '.join(map(str, sorted(_usados[p_])))}) y su límite es {m_}. "
+                           "Pulsa **🔄 Redistribuir productos** para volver a respetarlo.")
     riesgo = asig[asig["Prioridad"] == "🔴 Riesgo"]
     if len(riesgo):
         st.error(f"🔴 {len(riesgo)} producto(s) se agotarían antes del viaje 1 (con {P['buf']} días de margen): "
