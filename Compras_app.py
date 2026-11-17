@@ -2061,7 +2061,9 @@ if _nav == _SECC[4]:
                 if prov in viajes_de:
                     for j in sorted(viajes_de[prov]):
                         fl = _lineas_de_viaje(lins_ret, vj["asig"], j, prov)
-                        st.markdown(f"**Viaje {j} · {_fecha_es(vj['fechas'][j - 1])}** · {_num(sum(l['PesoV'] for l in fl), 1)} kg")
+                        st.markdown(f"**Viaje {j} · {_fecha_es(vj['fechas'][j - 1])}** · {_num(sum(l['PesoV'] for l in fl), 1)} kg · "
+                                    + (f"{clp(round(sum(l['NetoV'] for l in fl) * 1.19))} bruto (IVA incl.)" if inf["factura"]
+                                       else f"{clp(round(sum(l['NetoV'] for l in fl)))} (sin factura)"))
                         _is = _info_stock(lins_ret, vj["asig"], j, vj["fechas"][j - 1])
                         det = pd.DataFrame([{"Producto": l["Producto"], "Formato": l["Formato"], "Bultos": l["BultosV"], "Kg total": l["KgV"],
                                              "Stock hoy": _is[l["Clave"]][0], "Ya pedido antes": _is[l["Clave"]][3], "Stock al llegar": _is[l["Clave"]][1], "Durará hasta": _is[l["Clave"]][2],
