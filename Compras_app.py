@@ -1761,6 +1761,22 @@ def _pedidos_despacho(grp, inf):
     return {"cal": cal, "lins": lins, "asig": asig}
 
 
+def _info_stock(lineas, asig, j, fecha):
+    """{Clave: (stock hoy, stock al llegar, dura hasta)} para las líneas del pedido/viaje j (1..n), incluyendo lo pedido hasta j."""
+    ini_ = ss.get("_k_ini", date.today() + timedelta(days=1))
+    pre = cc._prefijo_pesos(ini_, _peso_fn())
+    ln = {l["Clave"]: l for l in lineas}
+    out = {}
+    for r in asig.to_dict("records"):
+        l = ln[r["Clave"]]
+        cum = sum(int(r[f"V{i}"]) for i in range(1, j + 1)) * l["Kg bulto"]
+        al_llegar = max(0.0, l["Stock"] - cc._acum(pre, ini_, fecha) * l["Diaria"])
+        q = cc.fecha_quiebre(l["Stock"] + cum, l["Diaria"], ini_, pre)
+        dura = f"{cc.DIAS_ES[q.weekday()]} {q:%d/%m}" if q else "sin quiebre"
+        out[r["Clave"]] = (l["Stock"], al_llegar, dura)
+    return out
+
+
 def _lineas_de_viaje(lineas, asig, j, prov=None):
     """Líneas (dict) con bultos en el viaje j (1..n); opcionalmente sólo de un proveedor."""
     ln = {l["Clave"]: l for l in lineas}
@@ -2045,9 +2061,11 @@ if _nav == _SECC[4]:
                     for j in sorted(viajes_de[prov]):
                         fl = _lineas_de_viaje(lins_ret, vj["asig"], j, prov)
                         st.markdown(f"**Viaje {j} · {_fecha_es(vj['fechas'][j - 1])}** · {_num(sum(l['PesoV'] for l in fl), 1)} kg")
+                        _is = _info_stock(lins_ret, vj["asig"], j, vj["fechas"][j - 1])
                         det = pd.DataFrame([{"Producto": l["Producto"], "Formato": l["Formato"], "Bultos": l["BultosV"], "Kg total": l["KgV"],
+                                             "Stock hoy": _is[l["Clave"]][0], "Stock al llegar": _is[l["Clave"]][1], "Durará hasta": _is[l["Clave"]][2],
                                              "Precio Neto Kg": l["Precio"], "Total Neto": l["NetoV"]} for l in fl])
-                        st.dataframe(det.style.format({"Kg total": _nf, "Precio Neto Kg": lambda v: _nf(v, "$"),
+                        st.dataframe(det.style.format({"Kg total": _nf, "Stock hoy": _nf, "Stock al llegar": _nf, "Precio Neto Kg": lambda v: _nf(v, "$"),
                                                        "Total Neto": lambda v: _nf(v, "$")}),
                                      hide_index=True, use_container_width=True)
                         f_ = vj["fechas"][j - 1]
@@ -2063,9 +2081,11 @@ if _nav == _SECC[4]:
                         neto_ = sum(l["NetoV"] for l in fl)
                         st.markdown(f"**Pedido {j} · pedir antes de {cc.DIAS_ES[C_.weekday()]} {C_:%d/%m} · llega {cc.DIAS_ES[D_.weekday()]} {D_:%d/%m}** "
                                     f"· {clp(neto_)} neto")
+                        _is = _info_stock(d_["lins"], d_["asig"], j, D_)
                         det = pd.DataFrame([{"Producto": l["Producto"], "Formato": l["Formato"], "Bultos": l["BultosV"], "Kg total": l["KgV"],
+                                             "Stock hoy": _is[l["Clave"]][0], "Stock al llegar": _is[l["Clave"]][1], "Durará hasta": _is[l["Clave"]][2],
                                              "Precio Neto Kg": l["Precio"], "Total Neto": l["NetoV"]} for l in fl])
-                        st.dataframe(det.style.format({"Kg total": _nf, "Precio Neto Kg": lambda v: _nf(v, "$"),
+                        st.dataframe(det.style.format({"Kg total": _nf, "Stock hoy": _nf, "Stock al llegar": _nf, "Precio Neto Kg": lambda v: _nf(v, "$"),
                                                        "Total Neto": lambda v: _nf(v, "$")}),
                                      hide_index=True, use_container_width=True)
                         msg = (f"Hola, quisiera pedir para el despacho del {cc.DIAS_ES[D_.weekday()]} {D_:%d/%m}:\n"
