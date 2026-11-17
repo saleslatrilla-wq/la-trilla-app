@@ -34,7 +34,7 @@ COLS_SESION = ["ID", "Fecha", "Detalle", "Parte", "Partes", "Datos"]
 COLS_CALENDARIO = ["Fecha", "Peso", "Nota"]
 ENTREGAS = ["Despacha en tienda", "Retiro en bodega proveedor"]
 CAP_VIAJE_DEF, MAX_VIAJE_DEF = 1500.0, 1750.0
-COLS_PROVEEDORES = ["Proveedor", "Factura", "Condición de pago", "Días cheque", "Entrega", "Máx. viajes", "Mín. kg compra", "Nota"]
+COLS_PROVEEDORES = ["Proveedor", "Factura", "Condición de pago", "Días cheque", "Entrega", "Máx. viajes", "Mín. kg compra", "Días despacho", "Pedir hasta", "Nota"]
 COLS_ORDENES = ["Fecha", "N° Orden", "Proveedor", "Producto", "Formato", "Bultos", "Kg",
                 "Precio Neto Kg", "Total Neto", "Estado", "Viaje", "Fecha Viaje"]
 
@@ -631,6 +631,39 @@ def _acum(pre: list, ini: date, hasta: date) -> float:
     if k <= 0:
         return 0.0
     return pre[min(k, len(pre) - 1)]
+
+
+def parse_dias(txt) -> list:
+    """'Vie' / 'Mar, Vie' / 'lunes y jueves' -> [weekday,...] (0=lunes)."""
+    out = []
+    for t in re.split(r"[,;/ y]+", norm(str(txt or ""))):
+        for i, d in enumerate(DIAS_ES):
+            if t and norm(d).startswith(t[:3]) and i not in out:
+                out.append(i)
+    return out
+
+
+def proximo_despacho(hoy: date, desp: list, lim: list):
+    """Próximo despacho alcanzable desde `hoy`: devuelve (fecha_limite_pedido, fecha_despacho) o None.
+    `lim` se empareja con `desp` por posición (si hay uno solo, vale para todos; si no hay, el límite es el día anterior)."""
+    if not desp:
+        return None
+    mejor = None
+    for k, wd in enumerate(desp):
+        lw = lim[k] if k < len(lim) else (lim[0] if len(lim) == 1 else None)
+        for n in range(0, 15):
+            D = hoy + timedelta(days=n)
+            if D.weekday() != wd:
+                continue
+            if lw is None:
+                C = D - timedelta(days=1)
+            else:
+                C = D - timedelta(days=(D.weekday() - lw) % 7)
+            if C >= hoy:
+                if mejor is None or D < mejor[1]:
+                    mejor = (C, D)
+                break
+    return mejor
 
 
 def fecha_quiebre(stock: float, diaria: float, ini: date, pre: list):

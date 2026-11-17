@@ -8,7 +8,7 @@ import pandas as pd
 import streamlit as st
 
 import compras_core as cc
-if "Mín. kg compra" not in cc.COLS_PROVEEDORES or "Máx. viajes" not in cc.COLS_PROVEEDORES or "max_viajes" not in cc.distribuir_viajes.__code__.co_varnames:
+if "Pedir hasta" not in cc.COLS_PROVEEDORES or "Mín. kg compra" not in cc.COLS_PROVEEDORES or "Máx. viajes" not in cc.COLS_PROVEEDORES or "max_viajes" not in cc.distribuir_viajes.__code__.co_varnames:
     st.error("Falta actualizar el archivo **compras_core.py** en GitHub: Compras_app.py y compras_core.py siempre deben subirse juntos. "
              "Sube la última versión de compras_core.py y reinicia la app (Manage app → Reboot).")
     st.stop()
@@ -464,7 +464,8 @@ def _prov_map():
             mp[k] = {"factura": cc.norm(r.get("Factura", "Sí")) not in ("no", "n", "false", "0"),
                      "cond": _cond_label(r.get("Condición de pago", ""), r.get("Días cheque", "")),
                      "entrega": ent, "retiro": cc.norm(ent).startswith("retiro"),
-                     "min_kg": float(pd.to_numeric(r.get("Mín. kg compra", ""), errors="coerce") or 0.0)}
+                     "min_kg": float(pd.to_numeric(r.get("Mín. kg compra", ""), errors="coerce") or 0.0),
+                     "desp": cc.parse_dias(r.get("Días despacho", "")), "lim": cc.parse_dias(r.get("Pedir hasta", ""))}
     return mp
 
 
@@ -1549,7 +1550,7 @@ if _nav == _SECC[3]:
         nuevos = [p for p in nuevos if cc.norm(p) not in ya]
         if nuevos:    # proveedores de la base de precios que aún no tienen condiciones
             base = pd.concat([base, pd.DataFrame({"Proveedor": nuevos, "Factura": "Sí", "Condición de pago": "",
-                                                  "Días cheque": "", "Entrega": "", "Máx. viajes": "", "Mín. kg compra": "", "Nota": ""})], ignore_index=True)
+                                                  "Días cheque": "", "Entrega": "", "Máx. viajes": "", "Mín. kg compra": "", "Días despacho": "", "Pedir hasta": "", "Nota": ""})], ignore_index=True)
         base["_k"] = base["Proveedor"].map(cc.norm)
         base = base.sort_values("_k").drop(columns="_k").reset_index(drop=True)
         base["Factura"] = base["Factura"].replace("", "Sí").fillna("Sí")
@@ -1570,7 +1571,7 @@ if _nav == _SECC[3]:
         vista["Entrega"] = [e_ or "—" for e_ in base["Entrega"]]
         vista["Máx. viajes"] = [f"{int(m_)}" if pd.notna(m_) else "sin límite" for m_ in base["Máx. viajes"]]
         vista["Mín. kg compra"] = [f"{_num(m_, 0)} kg" if pd.notna(m_) and m_ > 0 else "—" for m_ in base["Mín. kg compra"]]
-        vista = vista[["Proveedor", "Factura", "Condición de pago", "Entrega", "Máx. viajes", "Mín. kg compra", "Nota"]]
+        vista = vista[["Proveedor", "Factura", "Condición de pago", "Entrega", "Máx. viajes", "Mín. kg compra", "Días despacho", "Pedir hasta", "Nota"]]
 
         def _est_cond(df):
             e = pd.DataFrame("", index=df.index, columns=df.columns)
@@ -1596,6 +1597,9 @@ if _nav == _SECC[3]:
                         "Mín. kg compra": st.column_config.NumberColumn("Mín. kg por compra", min_value=0, step=10, format="%d",
                                                                         help="Kilos mínimos que exige el proveedor en cada compra (ej. Alitrade 500). Vacío = sin mínimo. "
                                                                              "Si el plan lo deja bajo ese mínimo, la app avisa cuánto falta."),
+                        "Días despacho": st.column_config.TextColumn("Días de despacho", help="Sólo proveedores que despachan en tienda. Ej: Vie  ·  o varios: Mar, Vie"),
+                        "Pedir hasta": st.column_config.TextColumn("Pedir hasta (día)", help="Último día para enviarle el pedido para que llegue en el despacho. "
+                                                                   "Ej: Mar (si despacha el Vie). Con varios despachos, en el mismo orden: Lun, Mar"),
                         "Nota": st.column_config.TextColumn("Nota", width="large")})
                 guardar_p = st.form_submit_button("💾 Guardar condiciones", type="primary")
             if guardar_p:
@@ -1960,6 +1964,29 @@ if _nav == _SECC[4]:
         if vj:
             st.info(f"🚚 {len(viajes_de)} proveedor(es) se retiran con el camión en {vj['n']} viaje(s). "
                     "Define los viajes y sus fechas en 📄 Pedidos → Logística y viajes.")
+
+        _cal = []
+        _hoy = date.today()
+        for p_ in sorted(ok["Proveedor"].unique()):
+            i_ = _info(p_)
+            if i_["retiro"] or not i_.get("desp"):
+                continue
+            r_ = cc.proximo_despacho(_hoy, i_["desp"], i_.get("lim", []))
+            if r_ is None:
+                continue
+            C_, D_ = r_
+            fal = (C_ - _hoy).days
+            _cal.append({"Proveedor": p_, "Pedir antes de": f"{cc.DIAS_ES[C_.weekday()]} {C_:%d/%m}", "Llega / despacha": f"{cc.DIAS_ES[D_.weekday()]} {D_:%d/%m}",
+                         "Días": fal, "Estado": "🔴 ¡Hoy es el último día!" if fal == 0 else ("🟡 Pedir pronto" if fal <= 2 else "🟢 A tiempo")})
+        if _cal:
+            st.markdown("#### 📅 Fechas límite de pedido (proveedores que despachan en tienda)")
+            _cal.sort(key=lambda x: x["Días"])
+            st.dataframe(pd.DataFrame(_cal).drop(columns="Días"), hide_index=True, use_container_width=True)
+            for c_ in _cal:
+                if c_["Días"] == 0:
+                    st.error(f"🔴 {c_['Proveedor']}: hoy es el último día para pedir (despacha {c_['Llega / despacha']}).")
+                elif c_["Días"] <= 2:
+                    st.warning(f"🟡 {c_['Proveedor']}: pedir antes de {c_['Pedir antes de']} para que llegue el {c_['Llega / despacha']}.")
 
         st.markdown("### Órdenes por proveedor")
         prov_sel = st.selectbox("Ver / copiar orden de", ["(todos)"] + res["Proveedor"].tolist())
