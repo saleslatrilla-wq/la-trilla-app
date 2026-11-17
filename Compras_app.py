@@ -8,6 +8,10 @@ import pandas as pd
 import streamlit as st
 
 import compras_core as cc
+if "Máx. viajes" not in cc.COLS_PROVEEDORES or "max_viajes" not in cc.distribuir_viajes.__code__.co_varnames:
+    st.error("Falta actualizar el archivo **compras_core.py** en GitHub: Compras_app.py y compras_core.py siempre deben subirse juntos. "
+             "Sube la última versión de compras_core.py y reinicia la app (Manage app → Reboot).")
+    st.stop()
 
 # Se ejecuta con exec() desde La_Trilla_app.py, igual que el resto de los módulos.
 spreadsheet = st.session_state.google_spreadsheet
