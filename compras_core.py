@@ -34,7 +34,7 @@ COLS_SESION = ["ID", "Fecha", "Detalle", "Parte", "Partes", "Datos"]
 COLS_CALENDARIO = ["Fecha", "Peso", "Nota"]
 ENTREGAS = ["Despacha en tienda", "Retiro en bodega proveedor"]
 CAP_VIAJE_DEF, MAX_VIAJE_DEF = 1500.0, 1750.0
-COLS_PROVEEDORES = ["Proveedor", "Factura", "Condición de pago", "Días cheque", "Entrega", "Nota"]
+COLS_PROVEEDORES = ["Proveedor", "Factura", "Condición de pago", "Días cheque", "Entrega", "Máx. viajes", "Nota"]
 COLS_ORDENES = ["Fecha", "N° Orden", "Proveedor", "Producto", "Formato", "Bultos", "Kg",
                 "Precio Neto Kg", "Total Neto", "Estado", "Viaje", "Fecha Viaje"]
 
@@ -646,12 +646,14 @@ def fecha_quiebre(stock: float, diaria: float, ini: date, pre: list):
 
 
 def distribuir_viajes(lineas: list, fechas: list, ini: date, peso_fn, buffer: int = 2, colchon: float = 0.0,
-                      cap: float = CAP_VIAJE_DEF, llenar: bool = True) -> pd.DataFrame:
+                      cap: float = CAP_VIAJE_DEF, llenar: bool = True, max_viajes: dict | None = None) -> pd.DataFrame:
     """Reparte los bultos de cada línea entre los viajes sin dejar sin stock a ningún producto.
     lineas: dicts con Clave, Bultos, Kg bulto, Peso bulto, Stock, Diaria (stock/diaria en kg/uni. del plan).
     1) Mínimo en cada viaje: lo necesario para que el stock llegue hasta el viaje siguiente (+ margen de días).
     2) Si `llenar`, el camión de cada viaje se completa (hasta `cap`) adelantando compras de viajes siguientes,
        empezando por los productos que se agotan antes.
+    max_viajes: {proveedor: n°} = en cuántos viajes como máximo se puede repartir la compra de ese proveedor
+    (1 = todo junto en un solo viaje). Los proveedores sin límite se reparten libremente.
     Devuelve una fila por línea con V1..Vn (bultos), Quiebre, Prioridad y Orden."""
     n = len(fechas)
     pre = _prefijo_pesos(ini, peso_fn)
@@ -679,7 +681,35 @@ def distribuir_viajes(lineas: list, fechas: list, ini: date, peso_fn, buffer: in
         else:
             prio = "🔴 Riesgo" if k == 0 else ("🔴 Crítico" if k == 1 else ("🟡 Normal" if k == 2 else "🟢 Puede esperar"))
         filas.append({"Clave": ln["Clave"], "pb": float(ln["Peso bulto"]), "a": a, "Quiebre": q,
-                      "Prioridad": prio, "k": k, "lim": lim or date.max})
+                      "Prioridad": prio, "k": k, "lim": lim or date.max, "prov": ln.get("Proveedor"), "B": B, "kgb": kgb,
+                      "stock": stock, "diaria": diaria, "perm": None})
+    # ---- proveedores con límite de viajes: se compra sólo en M viajes (el primero, el más temprano en que algo se necesita) ----
+    mv = {norm(k_): int(v_) for k_, v_ in (max_viajes or {}).items() if v_ and int(v_) >= 1}
+    por_prov = {}
+    for x in filas:
+        por_prov.setdefault(norm(x["prov"] or ""), []).append(x)
+    for pk, xs in por_prov.items():
+        M = mv.get(pk)
+        if not M or M >= n:
+            continue
+        j0 = min((next((j for j, v in enumerate(x["a"]) if v > 0), n - 1) for x in xs), default=n - 1)
+        if M == 1 or j0 >= n - 1:
+            S = [j0] if M == 1 else [n - 1]
+        else:
+            S = sorted({j0} | {j0 + int(round((n - 1 - j0) * i / (M - 1))) for i in range(1, M)})
+        for x in xs:
+            r = []
+            for idx, s_ in enumerate(S):
+                if idx == len(S) - 1:
+                    rj = x["B"]
+                else:
+                    cons = _acum(pre, ini, fechas[S[idx + 1]] + timedelta(days=buffer)) * x["diaria"] * f
+                    rj = min(x["B"], max(0, math.ceil((cons - x["stock"]) / x["kgb"] - 1e-9)))
+                r.append(max(rj, r[-1] if r else 0))
+            a = [0] * n
+            for idx, s_ in enumerate(S):
+                a[s_] = r[idx] - (r[idx - 1] if idx else 0)
+            x["a"], x["perm"] = a, set(S)
     if llenar and n > 1:
         orden = sorted(range(len(filas)), key=lambda i: (filas[i]["k"], filas[i]["lim"]))
         for j in range(n - 1):
@@ -689,6 +719,8 @@ def distribuir_viajes(lineas: list, fechas: list, ini: date, peso_fn, buffer: in
                 if libre <= 0:
                     break
                 x = filas[i]
+                if x["perm"] is not None and j not in x["perm"]:
+                    continue      # este proveedor no puede sumar un viaje más
                 for jj in range(j + 1, n):
                     if x["a"][jj] <= 0 or x["pb"] <= 0:
                         continue
@@ -717,14 +749,14 @@ def pesos_por_viaje(asig: pd.DataFrame, pesos_bulto: dict, n: int) -> list:
 
 
 def sugerir_viajes(lineas: list, f1: date, paso: int, ini: date, peso_fn, buffer: int = 2, colchon: float = 0.0,
-                   cap: float = CAP_VIAJE_DEF, llenar: bool = True, maximo: int = 8):
+                   cap: float = CAP_VIAJE_DEF, llenar: bool = True, maximo: int = 8, max_viajes: dict | None = None):
     """(n viajes, días entre viajes) con el menor número de viajes en que todo cabe bajo `cap`.
     Prueba primero con `paso` días entre viajes y, si no alcanza, con intervalos más cortos. None si no cabe nunca."""
     pb = {l["Clave"]: float(l["Peso bulto"]) for l in lineas}
     for n in range(1, maximo + 1):
         for p in range(max(1, paso), 0, -1):
             fechas = [f1 + timedelta(days=p * i) for i in range(n)]
-            w = pesos_por_viaje(distribuir_viajes(lineas, fechas, ini, peso_fn, buffer, colchon, cap, llenar), pb, n)
+            w = pesos_por_viaje(distribuir_viajes(lineas, fechas, ini, peso_fn, buffer, colchon, cap, llenar, max_viajes), pb, n)
             if max(w) <= cap + 1e-6:
                 return n, p
             if n == 1:
