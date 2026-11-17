@@ -2080,7 +2080,7 @@ if _nav == _SECC[4]:
                             continue
                         neto_ = sum(l["NetoV"] for l in fl)
                         st.markdown(f"**Pedido {j} · pedir antes de {cc.DIAS_ES[C_.weekday()]} {C_:%d/%m} · llega {cc.DIAS_ES[D_.weekday()]} {D_:%d/%m}** "
-                                    f"· {clp(neto_)} neto")
+                                    f"· {clp(round(neto_ * (1.19 if inf['factura'] else 1.0)))} " + ("bruto (IVA incl.)" if inf["factura"] else "(sin factura)"))
                         _is = _info_stock(d_["lins"], d_["asig"], j, D_)
                         det = pd.DataFrame([{"Producto": l["Producto"], "Formato": l["Formato"], "Bultos": l["BultosV"], "Kg total": l["KgV"],
                                              "Stock hoy": _is[l["Clave"]][0], "Stock al llegar": _is[l["Clave"]][1], "Durará hasta": _is[l["Clave"]][2],
