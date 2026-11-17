@@ -8,9 +8,37 @@ import pandas as pd
 import streamlit as st
 
 import compras_core as cc
-if "Máx. viajes" not in cc.COLS_PROVEEDORES or "max_viajes" not in cc.distribuir_viajes.__code__.co_varnames:
+if "Mín. kg compra" not in cc.COLS_PROVEEDORES or "Máx. viajes" not in cc.COLS_PROVEEDORES or "max_viajes" not in cc.distribuir_viajes.__code__.co_varnames:
     st.error("Falta actualizar el archivo **compras_core.py** en GitHub: Compras_app.py y compras_core.py siempre deben subirse juntos. "
              "Sube la última versión de compras_core.py y reinicia la app (Manage app → Reboot).")
+    st.stop()
+
+# ---------------- Contraseña del módulo ----------------
+import hashlib, hmac
+_PW_SHA256 = "23b1cc0f5125ec67c962e2d049f22ea0ef49133d57ca28618451df5e57b15274"      # contraseña por defecto (sólo su huella); mejor: definir COMPRAS_PASSWORD en los Secrets de Streamlit
+
+
+def _pw_ok(x):
+    try:
+        sec = st.secrets.get("COMPRAS_PASSWORD")
+    except Exception:
+        sec = None
+    if sec:
+        return hmac.compare_digest(str(x), str(sec))
+    return hmac.compare_digest(hashlib.sha256(str(x).encode()).hexdigest(), _PW_SHA256)
+
+
+if not st.session_state.get("cmp_unlocked"):
+    st.markdown("#### 🔒 Compras y Reposición")
+    with st.form("form_pw_compras"):
+        _pw = st.text_input("Contraseña del módulo", type="password")
+        _go = st.form_submit_button("Desbloquear", type="primary")
+    if _go:
+        if _pw_ok(_pw):
+            st.session_state.cmp_unlocked = True
+            st.rerun()
+        else:
+            st.error("Contraseña incorrecta.")
     st.stop()
 
 # Se ejecuta con exec() desde La_Trilla_app.py, igual que el resto de los módulos.
@@ -130,11 +158,7 @@ def _cb_guardar_sesion():
         det += f" · {len(ss.get('cmp_rev', ()))} revisadas"
         filas = pd.DataFrame([{"ID": sid, "Fecha": ahora.strftime("%d/%m/%Y %H:%M"), "Detalle": det,
                                "Parte": i + 1, "Partes": len(partes), "Datos": p} for i, p in enumerate(partes)])
-        _cmp_append(cc.SH_SESION, filas, cc.COLS_SESION)
-        todo = _cmp_load(cc.SH_SESION, cc.COLS_SESION)
-        ids = sorted(todo["ID"].unique(), reverse=True)
-        if len(ids) > _SNAP_MAX_SESIONES:            # se conservan los últimos registros
-            _cmp_save(cc.SH_SESION, todo[todo["ID"].isin(ids[:_SNAP_MAX_SESIONES])][cc.COLS_SESION])
+        _cmp_save(cc.SH_SESION, filas)               # sólo se conserva el último registro (reemplaza al anterior)
         ss.pop("cmp_ses_list", None)
         ss.cmp_ultimo_guardado = ahora.strftime("%d/%m %H:%M")
         st.toast(f"✅ Análisis guardado ({ss.cmp_ultimo_guardado})", icon="✅")
@@ -439,8 +463,23 @@ def _prov_map():
             ent = str(r.get("Entrega", "") or "").strip()
             mp[k] = {"factura": cc.norm(r.get("Factura", "Sí")) not in ("no", "n", "false", "0"),
                      "cond": _cond_label(r.get("Condición de pago", ""), r.get("Días cheque", "")),
-                     "entrega": ent, "retiro": cc.norm(ent).startswith("retiro")}
+                     "entrega": ent, "retiro": cc.norm(ent).startswith("retiro"),
+                     "min_kg": float(pd.to_numeric(r.get("Mín. kg compra", ""), errors="coerce") or 0.0)}
     return mp
+
+
+def _prov_bajo_minimo(df):
+    """[(proveedor, kg comprados, mínimo)] de los proveedores cuyo total en `df` queda bajo su mínimo de compra."""
+    if df is None or df.empty:
+        return []
+    pm = _prov_map()
+    kg = df.groupby("Proveedor")["Kg total"].sum()
+    out = []
+    for p_, k_ in kg.items():
+        m_ = pm.get(cc.norm(p_), {}).get("min_kg", 0.0)
+        if m_ > 0 and k_ + 1e-6 < m_:
+            out.append((p_, float(k_), float(m_)))
+    return out
 
 
 # =====================================================================================
@@ -1310,6 +1349,10 @@ def _plan_panel():
     iva = round(iva)
     k4.metric("IVA 19%", "$" + _num(iva), help="Sólo se suma IVA a los proveedores que facturan.")
     k5.metric("Total", "$" + _num(neto + iva))
+    _bajo = _prov_bajo_minimo(inc)
+    if _bajo:
+        st.warning("⚠️ Proveedores bajo su mínimo de compra: " + " · ".join(f"**{p_}** {_num(k_, 0)} de {_num(m_, 0)} kg (faltan {_num(m_ - k_, 0)})"
+                                                                         for p_, k_, m_ in _bajo))
 
 
 if _nav == _SECC[2]:
@@ -1506,13 +1549,14 @@ if _nav == _SECC[3]:
         nuevos = [p for p in nuevos if cc.norm(p) not in ya]
         if nuevos:    # proveedores de la base de precios que aún no tienen condiciones
             base = pd.concat([base, pd.DataFrame({"Proveedor": nuevos, "Factura": "Sí", "Condición de pago": "",
-                                                  "Días cheque": "", "Entrega": "", "Máx. viajes": "", "Nota": ""})], ignore_index=True)
+                                                  "Días cheque": "", "Entrega": "", "Máx. viajes": "", "Mín. kg compra": "", "Nota": ""})], ignore_index=True)
         base["_k"] = base["Proveedor"].map(cc.norm)
         base = base.sort_values("_k").drop(columns="_k").reset_index(drop=True)
         base["Factura"] = base["Factura"].replace("", "Sí").fillna("Sí")
         base["Días cheque"] = pd.to_numeric(base["Días cheque"].replace("", None), errors="coerce")
         base["Entrega"] = base["Entrega"].fillna("").astype(str)
         base["Máx. viajes"] = pd.to_numeric(base["Máx. viajes"].replace("", np.nan), errors="coerce")
+        base["Mín. kg compra"] = pd.to_numeric(base["Mín. kg compra"].replace("", np.nan), errors="coerce")
         sin_cond = int((base["Condición de pago"].astype(str).str.strip() == "").sum())
         k1, k2, k3, k4, k5 = st.columns(5)
         k1.metric("Proveedores", len(base))
@@ -1525,7 +1569,8 @@ if _nav == _SECC[3]:
         vista["Condición de pago"] = [_cond_label(c_, d_) or "—" for c_, d_ in zip(base["Condición de pago"], base["Días cheque"])]
         vista["Entrega"] = [e_ or "—" for e_ in base["Entrega"]]
         vista["Máx. viajes"] = [f"{int(m_)}" if pd.notna(m_) else "sin límite" for m_ in base["Máx. viajes"]]
-        vista = vista[["Proveedor", "Factura", "Condición de pago", "Entrega", "Máx. viajes", "Nota"]]
+        vista["Mín. kg compra"] = [f"{_num(m_, 0)} kg" if pd.notna(m_) and m_ > 0 else "—" for m_ in base["Mín. kg compra"]]
+        vista = vista[["Proveedor", "Factura", "Condición de pago", "Entrega", "Máx. viajes", "Mín. kg compra", "Nota"]]
 
         def _est_cond(df):
             e = pd.DataFrame("", index=df.index, columns=df.columns)
@@ -1548,6 +1593,9 @@ if _nav == _SECC[3]:
                         "Máx. viajes": st.column_config.NumberColumn("Máx. viajes", min_value=1, max_value=8, step=1, format="%d",
                                                                      help="En cuántos viajes del camión como máximo se puede repartir la compra de este proveedor "
                                                                           "(sólo si retiras en su bodega). 1 = todo junto en un solo viaje. Vacío = sin límite."),
+                        "Mín. kg compra": st.column_config.NumberColumn("Mín. kg por compra", min_value=0, step=10, format="%d",
+                                                                        help="Kilos mínimos que exige el proveedor en cada compra (ej. Alitrade 500). Vacío = sin mínimo. "
+                                                                             "Si el plan lo deja bajo ese mínimo, la app avisa cuánto falta."),
                         "Nota": st.column_config.TextColumn("Nota", width="large")})
                 guardar_p = st.form_submit_button("💾 Guardar condiciones", type="primary")
             if guardar_p:
@@ -1896,6 +1944,16 @@ if _nav == _SECC[4]:
         t3.metric("Total a pagar", "$" + _nf(res["Total"].sum()))
         if (res["Factura"] == "No").any():
             st.caption("🔴 Proveedores sin factura: se considera sólo el valor neto (no se suma IVA).")
+        _bajo5 = [b_ for b_ in _prov_bajo_minimo(ok) if b_[0] not in viajes_de]      # los que van por viajes se revisan viaje por viaje
+        for p_, k_, m_ in _bajo5:
+            st.warning(f"⚠️ {p_}: la compra es de {_num(k_, 0)} kg y su mínimo es {_num(m_, 0)} kg (faltan {_num(m_ - k_, 0)} kg).")
+        for p_ in sorted(viajes_de):
+            m_ = _info(p_).get("min_kg", 0.0)
+            for j_ in sorted(viajes_de[p_]):
+                k_ = sum(l["KgV"] for l in _lineas_de_viaje(lins_ret, vj["asig"], j_, p_))
+                if m_ > 0 and k_ + 1e-6 < m_:
+                    st.warning(f"⚠️ {p_} · viaje {j_}: {_num(k_, 0)} kg y su mínimo por compra es {_num(m_, 0)} kg (faltan {_num(m_ - k_, 0)} kg). "
+                               "Junta sus compras en menos viajes (Máx. viajes) o súmale productos.")
         if (res["Condición de pago"] == "—").any() or (res["Entrega"] == "—").any():
             st.caption("⚠️ Hay proveedores sin condición de pago o sin forma de entrega: defínelos en 4 → Condiciones de Proveedor.")
 
@@ -1923,7 +1981,7 @@ if _nav == _SECC[4]:
                                      hide_index=True, use_container_width=True)
                         f_ = vj["fechas"][j - 1]
                         msg = (f"Hola, quisiera pedir para retirar el {cc.DIAS_ES[f_.weekday()]} {f_:%d/%m}:\n"
-                               + "\n".join(_linea_msg(l, l["BultosV"]) for l in fl) + "\n¿Tienen stock? Gracias.")
+                               + "\n".join(_linea_msg(l, l["BultosV"]) for l in sorted(fl, key=lambda x: cc.norm(x["Producto"]))) + "\n¿Tienen stock? Gracias.")
                         st.code(msg, language=None)
                 else:
                     det = grp[["Producto", "Formato", "Bultos", "Kg total", "Precio Neto Kg", "Total Neto"]]
@@ -1931,7 +1989,7 @@ if _nav == _SECC[4]:
                                                    "Total Neto": lambda v: _nf(v, "$")}),
                                  hide_index=True, use_container_width=True)
                     lins = [l for l in lins_all if l["Proveedor"] == prov]
-                    msg = "Hola, quisiera pedir / cotizar:\n" + "\n".join(_linea_msg(l) for l in lins) + "\n¿Tienen stock? Gracias."
+                    msg = "Hola, quisiera pedir / cotizar:\n" + "\n".join(_linea_msg(l) for l in sorted(lins, key=lambda x: cc.norm(x["Producto"]))) + "\n¿Tienen stock? Gracias."
                     st.code(msg, language=None)
 
         # Excel

@@ -34,7 +34,7 @@ COLS_SESION = ["ID", "Fecha", "Detalle", "Parte", "Partes", "Datos"]
 COLS_CALENDARIO = ["Fecha", "Peso", "Nota"]
 ENTREGAS = ["Despacha en tienda", "Retiro en bodega proveedor"]
 CAP_VIAJE_DEF, MAX_VIAJE_DEF = 1500.0, 1750.0
-COLS_PROVEEDORES = ["Proveedor", "Factura", "Condición de pago", "Días cheque", "Entrega", "Máx. viajes", "Nota"]
+COLS_PROVEEDORES = ["Proveedor", "Factura", "Condición de pago", "Días cheque", "Entrega", "Máx. viajes", "Mín. kg compra", "Nota"]
 COLS_ORDENES = ["Fecha", "N° Orden", "Proveedor", "Producto", "Formato", "Bultos", "Kg",
                 "Precio Neto Kg", "Total Neto", "Estado", "Viaje", "Fecha Viaje"]
 
