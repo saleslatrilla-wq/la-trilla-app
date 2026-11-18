@@ -197,15 +197,11 @@ def _cb_cargar_sesion(sid):
     for k in ("cmp_plan_cache", "cmp_plan_cache_key", "cmp_pn_key", "cmp_stale", "cmp_last_rows", "cmp_nec", "cmp_base",
               "cmp_plan_sel", "cmp_del", "cmp_msg"):
         ss.pop(k, None)
-    for k in [k for k in ss.keys() if isinstance(k, str) and (k.startswith("inc_") or k.startswith("vjd_") or k == "vjn")]:
+    for k in [k for k in ss.keys() if isinstance(k, str) and (k.startswith("inc_") or k.startswith("vjd_") or k.startswith("vjn"))]:
         ss.pop(k, None)
     for k, v in est.items():
         ss[k] = v
-    cfg = ss.get("cmp_vjg_cfg")
-    if cfg:                                             # viajes definidos a mano
-        ss["vjn"] = cfg["n"]
-        for i, f_ in enumerate(cfg["fechas"]):
-            ss[f"vjd_{i}"] = f_
+    ss["_vj_nonce"] = ss.get("_vj_nonce", 0) + 1          # los viajes definidos a mano (cmp_vjg_cfg) se muestran con widgets nuevos
     # se recalculan la demanda y la necesidad con los datos cargados
     try:
         peso_h = float(ss.cmp_cal_hist["Peso"].sum())
@@ -422,6 +418,8 @@ if len(_subs) > 1:
 else:
     _idx = _subs[0][1]
 _nav = _SECC[_idx] if isinstance(_idx, int) else _idx
+if _nav != _SECC[5]:
+    ss["_vj_nonce"] = ss.get("_vj_nonce", 0) + 1       # al volver a Logística los widgets nacen de nuevo (sin valores viejos del navegador)
 if "cmp_nec" in ss:
     _n_ = ss.cmp_nec
     _p_ = [f"Cobertura {ss.get('_k_ini'):%d/%m} al {ss.get('_k_fin'):%d/%m}" if ss.get("_k_ini") and ss.get("_k_fin") else None,
@@ -1709,15 +1707,10 @@ def _viajes_global(lineas):
         n0, p0 = (sg if sg else (1, P["paso"]))
         cfg = {"n": n0, "fechas": [f1_def + timedelta(days=p0 * i) for i in range(n0)]}
         ss.cmp_vjg_cfg = cfg
-    n = int(ss.get("vjn", cfg["n"]))
-    raw = []
-    for i in range(n):
-        if f"vjd_{i}" in ss:
-            raw.append(ss[f"vjd_{i}"])
-        elif i < len(cfg["fechas"]):
-            raw.append(cfg["fechas"][i])
-        else:
-            raw.append((raw[-1] if raw else f1_def) + timedelta(days=P["paso"]))
+    n = int(cfg["n"])
+    raw = list(cfg["fechas"])[:n]
+    while len(raw) < n:
+        raw.append((raw[-1] if raw else f1_def) + timedelta(days=P["paso"]))
     fechas = sorted(raw)
     sig = (tuple((l["Clave"], l["Proveedor"], l["Bultos"], l["Formato"], round(l["Peso bulto"], 4)) for l in lineas),
            tuple(fechas), P["buf"], P["llenar"], ini_, col_, P["cap"], tuple(sorted(_max_viajes_map().items())))
@@ -1750,24 +1743,27 @@ def _cb_sugerir(lineas):
     n0, p0 = (sg if sg else (8, 1))
     fechas = [f1 + timedelta(days=p0 * i) for i in range(n0)]
     ss.cmp_vjg_cfg = {"n": n0, "fechas": fechas}
-    ss["vjn"] = n0
-    for i in range(8):
-        ss.pop(f"vjd_{i}", None)
-    for i, f_ in enumerate(fechas):
-        ss[f"vjd_{i}"] = f_
+    ss["_vj_nonce"] = ss.get("_vj_nonce", 0) + 1
     ss.cmp_vjg_asig = None
 
 
-def _cb_n_viajes():
+def _cb_n_viajes(nonce):
     """Al cambiar el n° de viajes, los nuevos viajes toman una fecha por defecto (último + días sugeridos)."""
     P = _params_viaje()
-    n = int(ss["vjn"])
-    prev = None
-    for i in range(n):
-        if f"vjd_{i}" not in ss:
-            base_ = prev or ss.get("cmp_vjg_cfg", {}).get("fechas", [date.today()])[-1]
-            ss[f"vjd_{i}"] = base_ + timedelta(days=P["paso"])
-        prev = ss[f"vjd_{i}"]
+    cfg = ss.cmp_vjg_cfg
+    n = int(ss[f"vjn_{nonce}"])
+    fe = list(cfg["fechas"])[:n]
+    while len(fe) < n:
+        fe.append((fe[-1] if fe else date.today()) + timedelta(days=P["paso"]))
+    ss.cmp_vjg_cfg = {"n": n, "fechas": fe}
+    ss["_vj_nonce"] = nonce + 1            # widgets de fechas nuevos con las fechas actualizadas
+
+
+def _cb_fecha_viaje(nonce, i):
+    cfg = ss.cmp_vjg_cfg
+    fe = list(cfg["fechas"])
+    fe[i] = ss[f"vjd_{nonce}_{i}"]
+    ss.cmp_vjg_cfg = {"n": cfg["n"], "fechas": fe}
 
 
 def _pedidos_despacho(grp, inf):
@@ -1861,8 +1857,9 @@ def _render_viajes(lineas, vj):
     P = vj["P"]
     ln = {l["Clave"]: l for l in lineas}
     c1, c2, c3 = st.columns([1, 1.6, 1.6])
-    c1.selectbox("Cantidad de viajes", list(range(1, 9)), key="vjn", on_change=_cb_n_viajes,
-                 **({} if "vjn" in ss else {"index": max(0, min(7, int(vj["n"]) - 1))}),
+    _nz = ss.get("_vj_nonce", 0)
+    c1.selectbox("Cantidad de viajes", list(range(1, 9)), key=f"vjn_{_nz}", on_change=_cb_n_viajes, args=(_nz,),
+                 index=max(0, min(7, int(vj["n"]) - 1)),
                  help="Se elige de la lista (se guarda al hacer clic, sin necesidad de apretar Enter).")
     c2.button("✨ Sugerir viajes y fechas", on_click=_cb_sugerir, args=(lineas,), use_container_width=True,
               help="Calcula cuántos viajes y qué días hacen falta para que todo quepa sin dejar productos sin stock.")
@@ -1871,9 +1868,8 @@ def _render_viajes(lineas, vj):
     st.caption("Define el día de cada viaje:")
     cols_f = st.columns(min(4, vj["n"]))
     for i in range(vj["n"]):
-        cols_f[i % len(cols_f)].date_input(f"Viaje {i + 1}", key=f"vjd_{i}", format="DD/MM/YYYY",
-                                           **({} if f"vjd_{i}" in ss else {"value": vj["fechas_raw"][i]}))
-    ss.cmp_vjg_cfg = {"n": int(ss.get("vjn", vj["n"])), "fechas": [ss.get(f"vjd_{i}", vj["fechas_raw"][i]) for i in range(vj["n"])]}
+        cols_f[i % len(cols_f)].date_input(f"Viaje {i + 1}", key=f"vjd_{_nz}_{i}", format="DD/MM/YYYY", value=vj["fechas_raw"][i],
+                                           on_change=_cb_fecha_viaje, args=(_nz, i))
     if vj["fechas_raw"] != sorted(vj["fechas_raw"]):
         st.warning("Las fechas de los viajes no van en orden; se ordenaron de la más próxima a la más lejana para el cálculo.")
 
