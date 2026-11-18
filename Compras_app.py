@@ -2019,26 +2019,35 @@ if _nav == _SECC[4]:
         res["Entrega"] = res["Proveedor"].map(lambda p: _info(p)["entrega"] or "—")
         res["Peso kg"] = res["Proveedor"].map(pes_prov)
         n_vj = vj["n"] if vj else 0
-        for j in range(1, n_vj + 1):       # total (con IVA si factura) de lo que se retira en cada viaje
+        _datecols = []        # (fecha, nombre de columna, función proveedor -> total con IVA si factura)
+        for j in range(1, n_vj + 1):       # total de lo que se retira en cada viaje del camión
             def _tot_viaje(p, j=j):
                 if p not in viajes_de or j not in viajes_de[p]:
                     return float("nan")
                 neto_j = sum(l["NetoV"] for l in _lineas_de_viaje(lins_ret, vj["asig"], j, p))
                 return round(neto_j * (1.19 if _info(p)["factura"] else 1.0))
-            res[f"Viaje {j} Total"] = res["Proveedor"].map(_tot_viaje)
-        def _tot_ahora(p):
-            d_ = desp_de.get(p)
-            if not d_:
-                return float("nan")
-            pri = _lineas_de_viaje(d_["lins"], d_["asig"], 1, p)
-            return round(sum(l["NetoV"] for l in pri) * (1.19 if _info(p)["factura"] else 1.0))
-        res["Pedir ahora"] = res["Proveedor"].map(_tot_ahora)
+            _datecols.append((vj["fechas"][j - 1], f"Viaje {j} · {vj['fechas'][j - 1]:%d/%m}", _tot_viaje))
+        _dd = {}
+        for p_, d_ in desp_de.items():       # despachos en tienda: una columna por fecha de llegada
+            for j, (C_, D_) in enumerate(d_["cal"], start=1):
+                if _lineas_de_viaje(d_["lins"], d_["asig"], j, p_):
+                    _dd.setdefault(D_, {})[p_] = j
+        for D_ in sorted(_dd):
+            def _tot_desp(p, D_=D_):
+                j = _dd[D_].get(p)
+                if j is None:
+                    return float("nan")
+                d_ = desp_de[p]
+                return round(sum(l["NetoV"] for l in _lineas_de_viaje(d_["lins"], d_["asig"], j, p)) * (1.19 if _info(p)["factura"] else 1.0))
+            _datecols.append((D_, f"Llega {cc.DIAS_ES[D_.weekday()]} {D_:%d/%m}", _tot_desp))
+        _datecols.sort(key=lambda x: x[0])
+        _cols_vj = [n_ for _, n_, _ in _datecols]
+        for _, n_, fn_ in _datecols:
+            res[n_] = res["Proveedor"].map(fn_).astype(float)
         res["IVA"] = (res["Neto"].where(res["Factura"] == "Sí", 0.0) * 0.19).round(0)      # sin factura: no se suma IVA
         res["Total"] = res["Neto"] + res["IVA"]
         res = res.sort_values("Total", ascending=False).reset_index(drop=True)
-        res = res[["Proveedor", "Factura", "Condición de pago", "Entrega", "Peso kg"] + [f"Viaje {j} Total" for j in range(1, n_vj + 1)]
-                  + (["Pedir ahora"] if res["Pedir ahora"].notna().any() else []) + ["Neto", "IVA", "Total"]]
-        _cols_vj = [f"Viaje {j} Total" for j in range(1, n_vj + 1)]
+        res = res[["Proveedor", "Factura", "Condición de pago", "Entrega", "Peso kg"] + _cols_vj + ["Neto", "IVA", "Total"]]
 
         def _nf(x, signo=""):
             """Formato chileno: miles con punto, decimales con coma (sólo si hacen falta)."""
@@ -2054,7 +2063,7 @@ if _nav == _SECC[4]:
             return e
         _vista_res = res.drop(columns=["Neto", "IVA"])
         st.dataframe(_vista_res.style.apply(_est_res, axis=None).format(
-                        {**{c: (lambda v: _nf(v, "$")) for c in _cols_vj + ["Total", "Pedir ahora"] if c in _vista_res.columns}, "Peso kg": lambda v: _num(v, 0)}, na_rep="—"),
+                        {**{c: (lambda v: _nf(v, "$")) for c in _cols_vj + ["Total"]}, "Peso kg": lambda v: _num(v, 0)}, na_rep="—"),
                      hide_index=True, use_container_width=True)
         t1, t2, t3 = st.columns(3)
         t1.metric("Neto total", "$" + _nf(res["Neto"].sum()))
