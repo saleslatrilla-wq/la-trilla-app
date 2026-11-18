@@ -62,14 +62,31 @@ def _cmp_load(sheet_name, columns):
     for c in columns:
         if c not in df.columns:
             df[c] = ""
+    if sheet_name == cc.SH_PRECIOS:      # precios siempre como número real ("7731,08", "$3.656,30" -> 7731.08 / 3656.3)
+        df["Precio Neto Kg"] = df["Precio Neto Kg"].map(lambda x: (lambda v: v if v > 0 else "")(cc.to_float(x, 0.0)))
     return df
 
 
-def _cmp_save(sheet_name, df):
+def _cmp_save(sheet_name, df, force=False):
     try:
         ws = spreadsheet.worksheet(sheet_name)
     except Exception:
         ws = spreadsheet.add_worksheet(title=sheet_name, rows="2000", cols="12")
+    if sheet_name == cc.SH_PRECIOS and not force:      # protección: no pisar la base si se perderían muchos precios
+        try:
+            _old = ws.get_all_values()
+            _h = _old[0] if _old else []
+            if "Precio Neto Kg" in _h:
+                _i = _h.index("Precio Neto Kg")
+                _n0 = sum(1 for r in _old[1:] if len(r) > _i and cc.to_float(r[_i], 0.0) > 0)
+                _n1 = sum(1 for v in df["Precio Neto Kg"] if cc.to_float(v, 0.0) > 0)
+                if _n0 - _n1 > max(5, 0.05 * _n0):
+                    raise RuntimeError(f"⛔ No guardé los precios: este cambio dejaría {_n0 - _n1} precios en blanco (la base tiene {_n0} y quedarían {_n1}). "
+                                       "Recarga con 🔄 y revisa.")
+        except RuntimeError:
+            raise
+        except Exception:
+            pass
     ws.clear()
     d = df.copy().astype(object).where(pd.notna(df), "")
     rows = [list(map(str, d.columns))]
@@ -1388,7 +1405,7 @@ if _nav == _SECC[3]:
         for c in cc.COLS_PRECIOS:
             if c not in d.columns:
                 d[c] = ""
-        d["Precio Neto Kg"] = pd.to_numeric(d["Precio Neto Kg"].replace("", None), errors="coerce")
+        d["Precio Neto Kg"] = d["Precio Neto Kg"].map(lambda x: cc.to_float(x, float("nan")))      # acepta "3656,3", "$3.656,30", etc.
         d["Disponible"] = d["Disponible"].replace("", "Sí")
         # orden: producto A-Z, con stock primero, del más barato al más caro
         d["_k"] = d["Producto"].map(cc.norm)
@@ -1481,7 +1498,7 @@ if _nav == _SECC[3]:
                     st.error("Elige un proveedor y marca la confirmación.")
                 else:
                     nuevo = ss.cmp_precios[ss.cmp_precios["Proveedor"] != p_del].reset_index(drop=True)
-                    _cmp_save(cc.SH_PRECIOS, nuevo[cc.COLS_PRECIOS])
+                    _cmp_save(cc.SH_PRECIOS, nuevo[cc.COLS_PRECIOS], force=True)
                     ss.cmp_precios = nuevo
                     ss.cmp_dirty = False
                     st.toast(f"🗑️ {p_del} eliminado ({n_of} ofertas)", icon="✅")
@@ -1500,6 +1517,12 @@ if _nav == _SECC[3]:
             if guardar:
                 out = pd.concat([d[~mask][cc.COLS_PRECIOS], edp], ignore_index=True)
                 out = out[(out["Producto"].astype(str).str.strip() != "") & (out["Proveedor"].astype(str).str.strip() != "")]
+                _con0 = int((d["Precio Neto Kg"].fillna(0) > 0).sum())
+                _con1 = int((pd.to_numeric(out["Precio Neto Kg"], errors="coerce").fillna(0) > 0).sum())
+                if _con0 - _con1 > max(5, 0.05 * _con0):
+                    st.error(f"⛔ No guardé: este cambio dejaría {_con0 - _con1} precios en blanco (de {_con0}). Si es lo que quieres, "
+                             "borra esas filas a propósito; si no, recarga con 🔄 y revisa.")
+                    st.stop()
                 _cmp_save(cc.SH_PRECIOS, out[cc.COLS_PRECIOS])
                 ss.cmp_precios = out[cc.COLS_PRECIOS].reset_index(drop=True)
                 ss.cmp_dirty = False
@@ -1509,7 +1532,7 @@ if _nav == _SECC[3]:
     with sub2:
         st.caption("Cuántos kg (o unidades) trae cada formato. Se usa para pasar ventas y compras a kg.")
         fd = df_formatos_db.copy()
-        fd["Kg por bulto"] = pd.to_numeric(fd["Kg por bulto"], errors="coerce")
+        fd["Kg por bulto"] = fd["Kg por bulto"].map(lambda x: cc.to_float(x, float("nan")))
         edf = st.data_editor(fd, num_rows="dynamic", use_container_width=True, hide_index=True, key="ed_formatos")
         if st.button("💾 Guardar formatos", type="primary", key="save_formatos"):
             edf = edf.dropna(subset=["Formato"])
@@ -1534,7 +1557,7 @@ if _nav == _SECC[3]:
                         p_new = p_new[~key(p_new).isin(set(key(df_precios_db)))]
                         p_new = pd.concat([df_precios_db, p_new], ignore_index=True)
                         f_new = pd.concat([df_formatos_db, f_new], ignore_index=True).drop_duplicates("Formato")
-                    _cmp_save(cc.SH_PRECIOS, p_new[cc.COLS_PRECIOS])
+                    _cmp_save(cc.SH_PRECIOS, p_new[cc.COLS_PRECIOS], force=True)
                     _cmp_save(cc.SH_FORMATOS, f_new[cc.COLS_FORMATOS])
                     ss.cmp_precios, ss.cmp_formatos = p_new[cc.COLS_PRECIOS].reset_index(drop=True), f_new[cc.COLS_FORMATOS].reset_index(drop=True)
                     st.success("✅ Importado")
