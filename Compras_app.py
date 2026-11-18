@@ -2027,23 +2027,22 @@ if _nav == _SECC[4]:
                 neto_j = sum(l["NetoV"] for l in _lineas_de_viaje(lins_ret, vj["asig"], j, p))
                 return round(neto_j * (1.19 if _info(p)["factura"] else 1.0))
             _datecols.append((vj["fechas"][j - 1], f"Viaje {j} · {vj['fechas'][j - 1]:%d/%m}", _tot_viaje))
-        _dd = {}
-        for p_, d_ in desp_de.items():       # despachos en tienda: una columna por fecha de llegada
-            for j, (C_, D_) in enumerate(d_["cal"], start=1):
-                if _lineas_de_viaje(d_["lins"], d_["asig"], j, p_):
-                    _dd.setdefault(D_, {})[p_] = j
-        for D_ in sorted(_dd):
-            def _tot_desp(p, D_=D_):
-                j = _dd[D_].get(p)
-                if j is None:
-                    return float("nan")
-                d_ = desp_de[p]
-                return round(sum(l["NetoV"] for l in _lineas_de_viaje(d_["lins"], d_["asig"], j, p)) * (1.19 if _info(p)["factura"] else 1.0))
-            _datecols.append((D_, f"Llega {cc.DIAS_ES[D_.weekday()]} {D_:%d/%m}", _tot_desp))
+        def _tot_desp(p):       # despachos en tienda: total (con IVA si factura) del primer pedido, el que hay que hacer ahora
+            d_ = desp_de.get(p)
+            if not d_:
+                return float("nan")
+            for j in range(1, len(d_["cal"]) + 1):
+                fl_ = _lineas_de_viaje(d_["lins"], d_["asig"], j, p)
+                if fl_:
+                    return round(sum(l["NetoV"] for l in fl_) * (1.19 if _info(p)["factura"] else 1.0))
+            return float("nan")
         _datecols.sort(key=lambda x: x[0])
         _cols_vj = [n_ for _, n_, _ in _datecols]
         for _, n_, fn_ in _datecols:
             res[n_] = res["Proveedor"].map(fn_).astype(float)
+        if desp_de:
+            res["Total Pedidos con Despacho"] = res["Proveedor"].map(_tot_desp).astype(float)
+            _cols_vj = _cols_vj + ["Total Pedidos con Despacho"]
         res["IVA"] = (res["Neto"].where(res["Factura"] == "Sí", 0.0) * 0.19).round(0)      # sin factura: no se suma IVA
         res["Total"] = res["Neto"] + res["IVA"]
         res = res.sort_values("Total", ascending=False).reset_index(drop=True)
