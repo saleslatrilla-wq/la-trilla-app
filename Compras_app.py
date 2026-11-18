@@ -201,14 +201,15 @@ def _cb_cargar_sesion(sid):
     except Exception as e:
         ss.cmp_msg_ses = (False, f"Se cargó el registro pero no se pudo recalcular: {e}")
         return
-    ss.cmp_msg_ses = (True, "Análisis cargado. Puedes seguir desde donde lo dejaste (revisa 📊 Análisis → Plan de compra).")
+    ss.cmp_msg_ses = (True, "Análisis cargado. Puedes seguir desde donde lo dejaste (revisa 🛒 Plan de compra).")
 
 
 _NAVMAP = {"📥 Datos": [("Datos y ventas", 0)],
-           "📊 Análisis": [("Cobertura", 1), ("Plan de compra", 2), ("Cambios de venta", "cv"), ("Productos no considerados", "nc")],
+           "📊 Análisis": [("Cobertura", 1), ("Cambios de venta", "cv"), ("Productos no considerados", "nc")],
+           "🛒 Plan de compra": [("Plan de compra", 2)],
            "📄 Pedidos": [("Órdenes de compra", 4), ("Logística y viajes", 5)],
            "⚙️ Configuración": [("Proveedores y precios", 3), ("Procesados", 6)]}
-hc1, hc2, hc3, hc4 = st.columns([1.45, 5.2, 1.0, 0.8], vertical_alignment="center")
+hc1, hc2, hc3, hc4 = st.columns([1.3, 6.4, 1.0, 0.7], vertical_alignment="center")
 hc1.markdown("#### 🛒 Compras")
 _g = hc2.radio("Sección", list(_NAVMAP), horizontal=True, key="cmp_grp", label_visibility="collapsed")
 hc3.button("💾 Guardar", on_click=_cb_guardar_sesion, use_container_width=True,
@@ -1133,7 +1134,11 @@ def _plan_panel():
     ss._k_crit = crit_txt
     _vers = ["Todos", "Pendientes", "Sin proveedor"] + (["Stock bajo lo previsto"] if ss.get("cmp_stock_base") else [])
     ver = f2.radio("Mostrar", _vers, horizontal=True, index=_vers.index(_keep("ver", "Todos")) if _keep("ver", "Todos") in _vers else 0)
-    txt = f3.text_input("🔎 Buscar producto", value=_keep("busca", ""))
+    if "plan_busca" not in ss:
+        ss.plan_busca = _keep("busca", "")
+    _tb, _bb = f3.columns([5, 1.4], vertical_alignment="bottom")
+    txt = _tb.text_input("🔎 Buscar producto", key="plan_busca")
+    _bb.button("✖", key="plan_busca_x", help="Limpiar la búsqueda", on_click=lambda: ss.__setitem__("plan_busca", ""))
     ss._k_ver, ss._k_busca = ver, txt
 
     plan_all = _plan_actual(crit)
@@ -1925,7 +1930,7 @@ if _nav == _SECC[4]:
     st.markdown("##### " + "Órdenes por proveedor")
     sel = ss.get("cmp_plan_sel")
     if sel is None or sel.empty:
-        st.info("Arma y marca las líneas en el plan de compra (📊 Análisis → Plan de compra).")
+        st.info("Arma y marca las líneas en el plan de compra (🛒 Plan de compra).")
     else:
         ok = sel[(sel["Proveedor"] != "— Sin proveedor —") & (sel["Bultos"] > 0)].copy()
         sinp = sel[sel["Proveedor"] == "— Sin proveedor —"]
@@ -2169,7 +2174,7 @@ if _nav == _SECC[5]:
     st.markdown("##### " + "Logística: camión y viajes")
     sel = ss.get("cmp_plan_sel")
     if sel is None or sel.empty:
-        st.info("Arma y marca las líneas en el plan de compra (📊 Análisis → Plan de compra).")
+        st.info("Arma y marca las líneas en el plan de compra (🛒 Plan de compra).")
     else:
         ok = sel[(sel["Proveedor"] != "— Sin proveedor —") & (sel["Bultos"] > 0)].copy()
         pm = _prov_map()
