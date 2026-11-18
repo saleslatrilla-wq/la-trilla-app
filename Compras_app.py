@@ -1763,7 +1763,37 @@ def _pedidos_despacho(grp, inf):
     lins = _lineas_viaje(grp)
     P = _params_viaje()
     asig = cc.distribuir_viajes(lins, [d for _, d in cal], ini_, _peso_fn(), P["buf"], float(ss.get("_k_col", 10.0)), 1e12, False, None)
+    mk = float(inf.get("min_kg", 0.0) or 0.0)
+    if mk > 0 and len(cal) > 1 and len(asig):
+        asig = _aplicar_minimo(asig, lins, len(cal), mk)
     return {"cal": cal, "lins": lins, "asig": asig}
+
+
+def _aplicar_minimo(asig, lins, n, mk):
+    """Cada pedido debe llegar al mínimo de kg del proveedor: primero se adelantan bultos de pedidos siguientes (los que se agotan antes);
+    si ya no queda de dónde, el pedido se junta con el anterior."""
+    kgb = {l["Clave"]: l["Kg bulto"] for l in lins}
+    rows = [dict(r) for r in asig.to_dict("records")]
+    kg = lambda j: sum(int(r[f"V{j + 1}"]) * kgb[r["Clave"]] for r in rows)
+    for j in range(n):
+        if kg(j) <= 0 or kg(j) >= mk:
+            continue
+        for jj in range(j + 1, n):
+            for r in rows:
+                while int(r[f"V{jj + 1}"]) > 0 and kg(j) < mk:
+                    r[f"V{jj + 1}"] = int(r[f"V{jj + 1}"]) - 1
+                    r[f"V{j + 1}"] = int(r[f"V{j + 1}"]) + 1
+                if kg(j) >= mk:
+                    break
+            if kg(j) >= mk:
+                break
+        if 0 < kg(j) < mk:
+            prev = next((i for i in range(j - 1, -1, -1) if kg(i) > 0), None)
+            if prev is not None:
+                for r in rows:
+                    r[f"V{prev + 1}"] = int(r[f"V{prev + 1}"]) + int(r[f"V{j + 1}"])
+                    r[f"V{j + 1}"] = 0
+    return pd.DataFrame(rows)
 
 
 def _info_stock(lineas, asig, j, fecha):
