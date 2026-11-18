@@ -1861,8 +1861,9 @@ def _render_viajes(lineas, vj):
     P = vj["P"]
     ln = {l["Clave"]: l for l in lineas}
     c1, c2, c3 = st.columns([1, 1.6, 1.6])
-    c1.number_input("Cantidad de viajes", 1, 8, step=1, key="vjn", on_change=_cb_n_viajes,
-                    **({} if "vjn" in ss else {"value": int(vj["n"])}))
+    c1.selectbox("Cantidad de viajes", list(range(1, 9)), key="vjn", on_change=_cb_n_viajes,
+                 **({} if "vjn" in ss else {"index": max(0, min(7, int(vj["n"]) - 1))}),
+                 help="Se elige de la lista (se guarda al hacer clic, sin necesidad de apretar Enter).")
     c2.button("✨ Sugerir viajes y fechas", on_click=_cb_sugerir, args=(lineas,), use_container_width=True,
               help="Calcula cuántos viajes y qué días hacen falta para que todo quepa sin dejar productos sin stock.")
     c3.button("🔄 Redistribuir productos", on_click=_cb_redistribuir, use_container_width=True,
