@@ -509,8 +509,8 @@ button:disabled{opacity:.55;cursor:default}
 details{margin-top:10px}summary{cursor:pointer;color:#555}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(130px,1fr));gap:6px 14px;margin:8px 0}
 .grid label{display:flex;justify-content:space-between;gap:8px;align-items:center}
-.prev{flex:0 0 auto}
-canvas#prev{height:310px;width:auto;max-width:100%;border:1px solid #bbb;background:#fff;display:block}
+.prev{flex:0 0 auto;order:-1}
+canvas#prev{height:470px;width:auto;max-width:100%;border:1px solid #bbb;background:#fff;display:block}
 #log{font:12px monospace;color:#6b7280;white-space:pre-wrap}
 </style></head><body>
 <div class="wrap">
@@ -889,7 +889,7 @@ window.__trillaPanelReady=ready;
 </script></body></html>
 """
 
-def panel_impresion(ezpx_bytes, titulo, altura=340):
+def panel_impresion(ezpx_bytes, titulo, altura=520):
     """Muestra el botón Imprimir (y la vista previa) para la etiqueta .ezpx ya generada."""
     html = (PANEL_IMPRESION_HTML
             .replace("__TITULO__", json.dumps(titulo, ensure_ascii=False).replace("<", "\\u003c"))
