@@ -526,6 +526,7 @@ canvas#prev{height:310px;width:auto;max-width:100%;border:1px solid #bbb;backgro
    <div class="grid">
     <label>Giro <select id="giro"><option value="ccw">90° antihorario</option><option value="cw">90° horario</option></select></label>
     <label>Girar 180° <input type="checkbox" id="r180"></label>
+    <label title="Desmarcado: la app dibuja el logo como imagen, derecho como se ve en el diseño. Marcado: usa el gráfico guardado en la impresora tal cual (debe estar guardado ya girado)">Logo guardado nativo <input type="checkbox" id="lognat"></label>
     <label>Umbral negro <input type="number" id="umbral" value="145" min="40" max="220"></label>
     <label>Alto barras <input type="number" id="bch" value="46" min="30" max="56"></label>
     <label>Dígitos px <input type="number" id="dpx" value="20" min="12" max="24"></label>
@@ -572,7 +573,7 @@ function parse(xml){
     font:(g.getAttribute('FontCmd')||'').trim(),fw:num(g.getAttribute('FontWidth'),1000)/1000,
     data:tx(g,'Data'),w:num(tx(g,'Width')),h:num(tx(g,'Height')),hs:num(tx(g,'HStroke'),4),vs:num(tx(g,'VStroke'),4),
     bmp:tx(g,'BitmapCmd'),narrow:num(g.getAttribute('Narrow'),2),
-    ang:num(tx(g,'Angle'),0),fid:g.getAttribute('FontId')||'',ident:tx(g,'Identifier'),stored:tx(g,'LoadToDevice')==='true'&&!!tx(g,'Identifier'),
+    ang:num(tx(g,'Angle'),0),fid:g.getAttribute('FontId')||'',ident:tx(g,'Identifier'),st0:tx(g,'LoadToDevice')==='true'&&!!tx(g,'Identifier'),get stored(){return this.st0&&$('lognat').checked},
     bch:num(g.getAttribute('Height')),bwd:num(g.getAttribute('Width'),6),sym:g.getAttribute('Symbology')||'',cap:g.getAttribute('CaptionAlignment')||'',
     fmx:num(g.getAttribute('FontWidth'),1),fmy:num(g.getAttribute('FontHeight'),1),gap:num(g.getAttribute('TextSpace'),0),
     b:br?{x:num(tx(br,'X')),y:num(tx(br,'Y')),w:num(tx(br,'Width')),h:num(tx(br,'Height'))}:null}});
@@ -807,6 +808,7 @@ const saveCfg=()=>{try{const st={};SAVED.forEach(id=>{const el=$(id);st[id]=el.t
 SAVED.concat(['prn']).forEach(id=>$(id).addEventListener('change',saveCfg));
 const rebuild=async(redraw)=>{try{await ready;if(redraw)draw();buildJob(1)}catch(e){setStatus('❌ '+e.message,'bad')}};
 ['giro','r180','umbral'].forEach(id=>$(id).addEventListener('change',()=>rebuild(false)));
+$('lognat').addEventListener('change',()=>{lockGiro();rebuild(true)});
 ['bch','dpx'].forEach(id=>$(id).addEventListener('change',()=>rebuild(true)));
 
 // ---------- QZ Tray ----------
@@ -872,12 +874,13 @@ $('head').onclick=async()=>{
   catch(e){setStatus('❌ '+(e&&e.message||e),'bad')}
 };
 
+function lockGiro(){const h=HYB();if(h){$('giro').value='ccw';$('r180').checked=false}$('giro').disabled=h;$('r180').disabled=h}
 // ---------- Arranque: dibuja la vista previa ----------
 ready=(async()=>{
   shapes=parse(new TextDecoder('utf-8').decode(Uint8Array.from(atob(EZPX_B64),c=>c.charCodeAt(0))));
   await loadFonts();
-  if(HYB()){$('giro').value='ccw';$('r180').checked=false;$('giro').disabled=true;$('r180').disabled=true;
-    const fo=$('fonts');if(!fo.textContent){fo.className='small';fo.textContent='⚡ Modo nativo: logo, Bebas Neue, código de barras y líneas se imprimen desde la impresora (giro fijo 90° antihorario).'}}
+  lockGiro();
+  if(HYB()){const fo=$('fonts');if(!fo.textContent){fo.className='small';fo.textContent='⚡ Modo nativo: logo, Bebas Neue, código de barras y líneas se imprimen desde la impresora (giro fijo 90° antihorario).'}}
   alinearPrecios();draw();buildJob(1);
 })();
 ready.catch(e=>setStatus('❌ No se pudo preparar la etiqueta: '+(e&&e.message||e),'bad'));
