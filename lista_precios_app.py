@@ -187,43 +187,119 @@ def modificar_etiqueta_ezpx(archivo_buf, lote_nuevo, precio_bruto, precio_kg, fe
         tree = ET.parse(archivo_buf)
         root = tree.getroot()
 
-        # Detectar patrones dinámicamente en la etiqueta base
-        patron_precio = re.compile(r"^\$[\d\.]+$")       # $1.200 / $37.500
-        patron_fecha  = re.compile(r"^\d{2}/\d{4}$")     # 05/2025 / 06/2026
-        patron_lote   = re.compile(r"^\d{2}[A-Z]{3}\d{3}$")  # 22CPL606
+        patron_precio = re.compile(r"^\$[\d\.]+$")            # $1.200 / $37.500
+        patron_fecha  = re.compile(r"^\d{2}/\d{4}$")           # 05/2025 / 06/2026
+        patron_lote   = re.compile(r"^\d{2}[A-Z]{3,6}\d{3}$")  # 22CPL606 / 06CRLQF611
+        paises = {"CANADA", "ANDORRA", "ARGENTINA", "BRASIL", "CHILE", "CHINA", "COLOMBIA",
+                  "ESPANA", "ESTADOS UNIDOS", "FRANCIA", "ITALIA", "MEXICO", "PERU",
+                  "PORTUGAL", "URUGUAY", "INDIA", "TURQUIA", "IRAN", "ECUADOR", "BOLIVIA"}
 
-        precios_encontrados = []  # [(elem_data, valor)]
-        fechas_encontradas  = []
-        
-        for elem in root.iter("GraphicShape"):
-            data = elem.find("Data")
-            if data is None or data.text is None:
-                continue
-            txt = data.text.strip()
-            if patron_precio.match(txt):
-                precios_encontrados.append((data, txt))
-            elif patron_fecha.match(txt):
-                fechas_encontradas.append((data, txt))
-            elif patron_lote.match(txt):
-                data.text = lote_nuevo
-            elif txt.upper() in [p.upper() for p in ["CANADÁ","CANADA","ANDORRA","ARGENTINA","BRASIL","CHILE","CHINA","COLOMBIA","ESPAÑA","ESTADOS UNIDOS","FRANCIA","ITALIA","MÉXICO","PERU","PORTUGAL","URUGUAY"] + [origen.upper()]]:
-                data.text = origen.upper()
+        def norm(t):
+            t = unicodedata.normalize("NFD", t or "")
+            return "".join(c for c in t if unicodedata.category(c) != "Mn").upper().strip()
+        paises.add(norm(origen))
 
-        # El precio menor = precio bruto unitario; el mayor = precio por KG
-        if len(precios_encontrados) >= 2:
-            precios_encontrados.sort(key=lambda x: float(x[1].replace("$","").replace(".","").replace(",",".")))
-            precios_encontrados[0][0].text = precio_bruto
-            precios_encontrados[1][0].text = precio_kg
-        elif len(precios_encontrados) == 1:
-            precios_encontrados[0][0].text = precio_bruto
+        def pos(g):
+            br = g.find("BoundRect")
+            try:
+                return float(br.findtext("X")), float(br.findtext("Y")), float(br.findtext("Width")), float(br.findtext("Height"))
+            except Exception:
+                return None
 
-        # La fecha menor = producción; la mayor = vencimiento
-        if len(fechas_encontradas) >= 2:
-            fechas_encontradas.sort(key=lambda x: x[1])
-            fechas_encontradas[0][0].text = fecha_prod
-            fechas_encontradas[1][0].text = fecha_venc
-        elif len(fechas_encontradas) == 1:
-            fechas_encontradas[0][0].text = fecha_prod
+        items = []  # (shape, data_elem, texto)
+        for g in root.iter("GraphicShape"):
+            d = g.find("Data")
+            if d is not None and d.text is not None:
+                items.append((g, d, d.text.strip()))
+
+        def etiqueta(nombre):
+            for g, d, t in items:
+                if norm(t).rstrip(":") == nombre:
+                    return g
+            return None
+
+        def junto_a(lbl):
+            """Textos en la misma fila (mismo Y) que la etiqueta, a su derecha o izquierda."""
+            pl = pos(lbl) if lbl is not None else None
+            if not pl:
+                return []
+            out = []
+            for g, d, t in items:
+                if g is lbl:
+                    continue
+                pg = pos(g)
+                if pg and abs(pg[1] - pl[1]) < 6 and abs(pg[0] - pl[0]) > 5:
+                    out.append((g, d, t))
+            return out
+
+        precios, fechas = [], []
+        for g, d, t in items:
+            if patron_precio.match(t):
+                precios.append((g, d, t))
+            elif patron_fecha.match(t):
+                fechas.append((g, d, t))
+
+        # Lote: por patron o, si no coincide, el texto que acompana a "LOTE:"
+        lote_hecho = False
+        for g, d, t in items:
+            if patron_lote.match(t):
+                d.text = lote_nuevo
+                lote_hecho = True
+        if not lote_hecho:
+            for g, d, t in junto_a(etiqueta("LOTE")):
+                if not patron_fecha.match(t) and not patron_precio.match(t):
+                    d.text = lote_nuevo
+                    break
+
+        # Origen: por lista de paises (sin tildes) o el texto que acompana a "ORIGEN:"
+        origen_hecho = False
+        for g, d, t in items:
+            if norm(t) in paises:
+                d.text = origen.upper()
+                origen_hecho = True
+        if not origen_hecho:
+            for g, d, t in junto_a(etiqueta("ORIGEN")):
+                d.text = origen.upper()
+                break
+
+        # Precios: el menor = precio bruto unitario; el mayor = precio por KG
+        def valor(t):
+            return float(t.replace("$", "").replace(".", "").replace(",", "."))
+        if len(precios) >= 2:
+            precios.sort(key=lambda x: valor(x[2]))
+            precios[0][1].text = precio_bruto
+            precios[1][1].text = precio_kg
+        elif len(precios) == 1:
+            precios[0][1].text = precio_bruto
+
+        # Fechas: por la etiqueta ELAB / VENC mas cercana (no por el valor viejo,
+        # que puede estar invertido en la plantilla)
+        if len(fechas) >= 2:
+            def cercana(nombre):
+                lbl = etiqueta(nombre)
+                pl = pos(lbl) if lbl is not None else None
+                if not pl:
+                    return None
+                mejor, dm = None, 1e9
+                for f in fechas:
+                    pf = pos(f[0])
+                    if not pf:
+                        continue
+                    dist = abs(pf[0] - pl[0]) * 0.2 + abs((pf[1] + pf[3] / 2) - (pl[1] + pl[3] / 2))
+                    if dist < dm:
+                        mejor, dm = f, dist
+                return mejor
+            fe, fv = cercana("ELAB"), cercana("VENC")
+            if fe is None or fv is None or fe is fv:
+                def clave(f):
+                    a, b = f[2].split("/")
+                    return (int(b), int(a))
+                ordenadas = sorted(fechas, key=clave)
+                fe, fv = ordenadas[0], ordenadas[-1]
+            fe[1].text = fecha_prod
+            fv[1].text = fecha_venc
+        elif len(fechas) == 1:
+            fechas[0][1].text = fecha_prod
 
         buf = BytesIO()
         tree.write(buf, encoding="utf-8", xml_declaration=True)
