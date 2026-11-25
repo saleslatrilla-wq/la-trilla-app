@@ -2128,10 +2128,10 @@ if _nav == _SECC[4]:
                                     + (f"{clp(round(sum(l['NetoV'] for l in fl) * 1.19))} bruto (IVA incl.)" if inf["factura"]
                                        else f"{clp(round(sum(l['NetoV'] for l in fl)))} (sin factura)"))
                         _is = _info_stock(lins_ret, vj["asig"], j, vj["fechas"][j - 1])
-                        det = pd.DataFrame([{"Producto": l["Producto"], "Formato": l["Formato"], "Bultos": l["BultosV"], "Kg total": l["KgV"],
+                        det = pd.DataFrame([{"Producto": l["Producto"], "Formato": l["Formato"], "Bultos": l["BultosV"], "Kg / uni. total": l["KgV"], "Peso camión kg": l["PesoV"],
                                              "Stock hoy": _is[l["Clave"]][0], "Ya pedido antes": _is[l["Clave"]][3], "Stock al llegar": _is[l["Clave"]][1], "Durará hasta": _is[l["Clave"]][2],
                                              "Precio Neto Kg": l["Precio"], "Total Neto": l["NetoV"]} for l in fl])
-                        st.dataframe(det.style.format({"Kg total": _nf, "Stock hoy": _nf, "Ya pedido antes": _nf, "Stock al llegar": _nf, "Precio Neto Kg": lambda v: _nf(v, "$"),
+                        st.dataframe(det.style.format({"Kg / uni. total": _nf, "Peso camión kg": _nf, "Stock hoy": _nf, "Ya pedido antes": _nf, "Stock al llegar": _nf, "Precio Neto Kg": lambda v: _nf(v, "$"),
                                                        "Total Neto": lambda v: _nf(v, "$")}),
                                      hide_index=True, use_container_width=True)
                         f_ = vj["fechas"][j - 1]
@@ -2148,10 +2148,10 @@ if _nav == _SECC[4]:
                         st.markdown(f"**Pedido {j} · pedir antes de {cc.DIAS_ES[C_.weekday()]} {C_:%d/%m} · llega {cc.DIAS_ES[D_.weekday()]} {D_:%d/%m}** "
                                     f"· {clp(round(neto_ * (1.19 if inf['factura'] else 1.0)))} " + ("bruto (IVA incl.)" if inf["factura"] else "(sin factura)"))
                         _is = _info_stock(d_["lins"], d_["asig"], j, D_)
-                        det = pd.DataFrame([{"Producto": l["Producto"], "Formato": l["Formato"], "Bultos": l["BultosV"], "Kg total": l["KgV"],
+                        det = pd.DataFrame([{"Producto": l["Producto"], "Formato": l["Formato"], "Bultos": l["BultosV"], "Kg / uni. total": l["KgV"], "Peso camión kg": l["PesoV"],
                                              "Stock hoy": _is[l["Clave"]][0], "Ya pedido antes": _is[l["Clave"]][3], "Stock al llegar": _is[l["Clave"]][1], "Durará hasta": _is[l["Clave"]][2],
                                              "Precio Neto Kg": l["Precio"], "Total Neto": l["NetoV"]} for l in fl])
-                        st.dataframe(det.style.format({"Kg total": _nf, "Stock hoy": _nf, "Ya pedido antes": _nf, "Stock al llegar": _nf, "Precio Neto Kg": lambda v: _nf(v, "$"),
+                        st.dataframe(det.style.format({"Kg / uni. total": _nf, "Peso camión kg": _nf, "Stock hoy": _nf, "Ya pedido antes": _nf, "Stock al llegar": _nf, "Precio Neto Kg": lambda v: _nf(v, "$"),
                                                        "Total Neto": lambda v: _nf(v, "$")}),
                                      hide_index=True, use_container_width=True)
                         msg = (f"Hola, quisiera pedir para el despacho del {cc.DIAS_ES[D_.weekday()]} {D_:%d/%m}:\n"
