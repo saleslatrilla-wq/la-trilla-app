@@ -34,7 +34,19 @@ st.session_state.google_spreadsheet = get_spreadsheet()
 
 # ===================== CONTRASEÑAS =====================
 GLOBAL_PASSWORD = st.secrets["global"]["password"]
-CALC_ADMIN_PASSWORD = st.secrets["calculadora"]["password"]
+# Clave única de administrador: en Secrets como
+#   [modo_admin]
+#   password = "..."
+# (también acepta ["modo admin"] con comillas)
+def _admin_secret():
+    for k in ("modo_admin", "modo admin"):
+        try:
+            return str(st.secrets[k]["password"])
+        except Exception:
+            pass
+    return None
+
+ADMIN_PASSWORD = _admin_secret()
 
 # ===================== LOGIN GLOBAL =====================
 if "global_logged_in" not in st.session_state:
@@ -63,9 +75,9 @@ if not st.session_state.global_logged_in:
                 st.error("❌ Contraseña incorrecta")
     st.stop()
 
-# ===================== ADMIN CALCULADORA =====================
-if "calc_admin_mode" not in st.session_state:
-    st.session_state.calc_admin_mode = False
+# ===================== MODO ADMINISTRADOR (único) =====================
+if "admin_mode" not in st.session_state:
+    st.session_state.admin_mode = False
 
 # ===================== BARRA LATERAL =====================
 try:
@@ -90,6 +102,33 @@ modulo = st.sidebar.selectbox(
 st.sidebar.markdown("---")
 st.sidebar.caption("Versión Integral - Datos en Google Sheets")
 
+# ----- Activar Modo Administrador (al final de la barra lateral) -----
+import hmac as _hmac
+with st.sidebar.expander("🔓 Modo Administrador activo" if st.session_state.admin_mode else "🔑 Activar Modo Administrador"):
+    if not st.session_state.admin_mode:
+        with st.form("form_modo_admin", clear_on_submit=True):
+            _pwd = st.text_input("Contraseña de administrador", type="password")
+            _ok = st.form_submit_button("Activar", use_container_width=True)
+        if _ok:
+            if ADMIN_PASSWORD is None:
+                st.error("Falta [modo_admin] password en los Secrets.")
+            elif _hmac.compare_digest(_pwd.encode(), ADMIN_PASSWORD.encode()):
+                st.session_state.admin_mode = True
+                st.rerun()
+            else:
+                st.error("❌ Contraseña incorrecta")
+    else:
+        st.success("Acceso a: Administración (Lista de Precios), Calculadora y Compras")
+        if st.button("🔒 Desactivar Modo Administrador", use_container_width=True):
+            st.session_state.admin_mode = False
+            st.rerun()
+
+def _requiere_admin(nombre):
+    if not st.session_state.admin_mode:
+        st.error(f"🔒 **{nombre}** requiere Modo Administrador")
+        st.info("Actívalo al final de la barra lateral: 🔑 Activar Modo Administrador.")
+        st.stop()
+
 # ===================== EJECUCIÓN DE MÓDULOS =====================
 if modulo == "📋 1. Lista de Precios":
     with open("lista_precios_app.py", "r", encoding="utf-8") as f:
@@ -100,26 +139,7 @@ elif modulo == "🏭 2. Producción / Envasado":
         exec(f.read())
 
 elif modulo == "📊 3. Calculadora de Precios":
-    with st.sidebar.expander("🔑 Modo Administrador - Calculadora"):
-        if not st.session_state.calc_admin_mode:
-            pwd = st.text_input("Contraseña Admin Calculadora", type="password")
-            if st.button("Activar Calculadora", use_container_width=True):
-                if pwd == CALC_ADMIN_PASSWORD:
-                    st.session_state.calc_admin_mode = True
-                    st.success("✅ Calculadora desbloqueada")
-                    st.rerun()
-                else:
-                    st.error("❌ Contraseña incorrecta")
-        else:
-            st.success("🔓 Modo Admin Activo")
-            if st.button("Bloquear Calculadora", use_container_width=True):
-                st.session_state.calc_admin_mode = False
-                st.rerun()
-
-    if not st.session_state.calc_admin_mode:
-        st.error("🔒 **Calculadora bloqueada**")
-        st.info("Usa el 'Modo Administrador' en la barra lateral para desbloquearla.")
-        st.stop()
+    _requiere_admin("Calculadora de Precios")
 
     with open("Calculadora_Precios_app.py", "r", encoding="utf-8") as f:
         exec(f.read())
@@ -129,5 +149,6 @@ elif modulo == "📦 4. Pedidos":
         exec(f.read())
 
 elif modulo == "🛒 5. Compras":
+    _requiere_admin("Compras")
     with open("Compras_app.py", "r", encoding="utf-8") as f:
         exec(f.read())

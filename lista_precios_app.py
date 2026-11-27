@@ -309,17 +309,6 @@ def modificar_etiqueta_ezpx(archivo_buf, lote_nuevo, precio_bruto, precio_kg, fe
         st.error(f"Error al modificar etiqueta: {e}")
         return None
 
-# ==================== CONFIGURACIÓN ADMIN ====================
-# Define la clave en .streamlit/secrets.toml  ->  admin_password = "tu_clave"
-# Si no existe en secrets, se usa esta (CÁMBIALA).
-ADMIN_PASSWORD_DEFAULT = "trilla"
-
-def _admin_password():
-    try:
-        return str(st.secrets["admin_password"])
-    except Exception:
-        return ADMIN_PASSWORD_DEFAULT
-
 # ==================== DATOS DE PRODUCTOS (ORIGEN Y FECHAS) ====================
 DATOS_SHEET = "datos_lote"   # una fila por (lote, producto)
 COLS_DATOS = ["lote", "producto", "origen", "fecha_produccion", "fecha_vencimiento"]
@@ -1171,21 +1160,9 @@ with tab2:
 with tab3:
     st.subheader("🔐 Administración")
 
-    if not st.session_state.get("admin_ok", False):
-        with st.form("login_admin"):
-            pwd = st.text_input("Contraseña", type="password")
-            entrar = st.form_submit_button("Ingresar", type="primary")
-        if entrar:
-            if hmac.compare_digest(pwd.encode(), _admin_password().encode()):
-                st.session_state.admin_ok = True
-                st.rerun()
-            else:
-                st.error("Contraseña incorrecta")
+    if not st.session_state.get("admin_mode", False):
+        st.info("🔒 Activa el **Modo Administrador** al final de la barra lateral para ver esta sección.")
     else:
-        if st.button("🔒 Cerrar sesión", key="adm_logout"):
-            st.session_state.admin_ok = False
-            st.rerun()
-
         if st.session_state.get("adm_msg"):
             st.success(st.session_state.pop("adm_msg"))
 

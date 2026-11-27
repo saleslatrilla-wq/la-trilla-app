@@ -13,33 +13,7 @@ if "Frecuencia" not in cc.COLS_PROVEEDORES or "Mín. kg compra" not in cc.COLS_P
              "Sube la última versión de compras_core.py y reinicia la app (Manage app → Reboot).")
     st.stop()
 
-# ---------------- Contraseña del módulo ----------------
-import hashlib, hmac
-_PW_SHA256 = "23b1cc0f5125ec67c962e2d049f22ea0ef49133d57ca28618451df5e57b15274"      # contraseña por defecto (sólo su huella); mejor: definir COMPRAS_PASSWORD en los Secrets de Streamlit
-
-
-def _pw_ok(x):
-    try:
-        sec = st.secrets.get("COMPRAS_PASSWORD")
-    except Exception:
-        sec = None
-    if sec:
-        return hmac.compare_digest(str(x), str(sec))
-    return hmac.compare_digest(hashlib.sha256(str(x).encode()).hexdigest(), _PW_SHA256)
-
-
-if not st.session_state.get("cmp_unlocked"):
-    st.markdown("#### 🔒 Compras y Reposición")
-    with st.form("form_pw_compras"):
-        _pw = st.text_input("Contraseña del módulo", type="password")
-        _go = st.form_submit_button("Desbloquear", type="primary")
-    if _go:
-        if _pw_ok(_pw):
-            st.session_state.cmp_unlocked = True
-            st.rerun()
-        else:
-            st.error("Contraseña incorrecta.")
-    st.stop()
+# Acceso: controlado por el Modo Administrador único (La_Trilla_app.py).
 
 # Se ejecuta con exec() desde La_Trilla_app.py, igual que el resto de los módulos.
 spreadsheet = st.session_state.google_spreadsheet
